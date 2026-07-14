@@ -1,0 +1,43 @@
+const mongoose = require('mongoose');
+
+const paymentSchema = new mongoose.Schema({
+  societyId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Society',
+    required: true,
+  },
+  residentId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true,
+  },
+  amount: {
+    type: Number,
+    required: true,
+  },
+  currency: {
+    type: String,
+    default: 'INR',
+  },
+  razorpayOrderId: {
+    type: String,
+  },
+  razorpayPaymentId: {
+    type: String,
+  },
+  status: {
+    type: String,
+    enum: ['created', 'authorized', 'captured', 'failed'],
+    default: 'created',
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now,
+  },
+  updatedAt: {
+    type: Date,
+    default: Date.now,
+  },
+});
+
+module.exports = mongoose.model('Payment', paymentSchema);
