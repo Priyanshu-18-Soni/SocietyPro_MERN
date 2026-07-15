@@ -1,0 +1,19 @@
+### Register a new user
+POST http://localhost:5000/api/auth/register
+Content-Type: application/json
+
+{
+  "name": "Test Admin",
+  "email": "testadmin2@societypro.com",
+  "password": "test1234",
+  "role": "SuperAdmin"
+}
+
+### Login existing user
+POST http://localhost:5000/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "testadmin2@societypro.com",
+  "password": "test1234"
+}
