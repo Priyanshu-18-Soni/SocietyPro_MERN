@@ -22,3 +22,22 @@ Content-Type: application/json
 GET http://localhost:5000/api/test/protected
 Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjZhNTdiZWM5MjU3ODM3NWNmZjNiZWIzMyIsInJvbGUiOiJTdXBlckFkbWluIiwiaWF0IjoxNzg0MTM1Nzk2LCJleHAiOjE3ODQ3NDA1OTZ9.nzQWvnQloLmyMtilaftVZHI5BJqj2a86l_D7vW-Qxcc
 
+### Create a new society (requires SuperAdmin token)
+POST http://localhost:5000/api/society
+Content-Type: application/json
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjZhNTdiZWM5MjU3ODM3NWNmZjNiZWIzMyIsInJvbGUiOiJTdXBlckFkbWluIiwiaWF0IjoxNzg0Mjk1NTAyLCJleHAiOjE3ODQ5MDAzMDJ9.wD2q4IUE8GG2qtqX4n9hjCpJO4dkcwcfkxKyIBwh7Fw
+
+{
+  "name": "Asmita Mogra Co-Op Housing Society",
+  "address": "123 Test Street",
+  "city": "Mumbai",
+  "registrationNumber": "REG12345"
+}
+
+### Get all societies (requires SuperAdmin token)
+GET http://localhost:5000/api/society
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjZhNTdiZWM5MjU3ODM3NWNmZjNiZWIzMyIsInJvbGUiOiJTdXBlckFkbWluIiwiaWF0IjoxNzg0Mjk1NzY0LCJleHAiOjE3ODQ5MDA1NjR9.hYt0oNwoMwsVrXUhcwlhOlP0_wrrxwVztI2XQAZa5u4
+
+### Get a single society by ID (requires token)
+GET http://localhost:5000/api/society/6a5a30f08d986c89331c61dc
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjZhNTdiZWM5MjU3ODM3NWNmZjNiZWIzMyIsInJvbGUiOiJTdXBlckFkbWluIiwiaWF0IjoxNzg0Mjk1NzY0LCJleHAiOjE3ODQ5MDA1NjR9.hYt0oNwoMwsVrXUhcwlhOlP0_wrrxwVztI2XQAZa5u4
