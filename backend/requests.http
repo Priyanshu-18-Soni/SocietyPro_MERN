@@ -20,12 +20,12 @@ Content-Type: application/json
 
 ### Test protected route
 GET http://localhost:5000/api/test/protected
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjZhNTdiZWM5MjU3ODM3NWNmZjNiZWIzMyIsInJvbGUiOiJTdXBlckFkbWluIiwiaWF0IjoxNzg0MTM1Nzk2LCJleHAiOjE3ODQ3NDA1OTZ9.nzQWvnQloLmyMtilaftVZHI5BJqj2a86l_D7vW-Qxcc
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjZhNTdiZWM5MjU3ODM3NWNmZjNiZWIzMyIsInJvbGUiOiJTdXBlckFkbWluIiwiaWF0IjoxNzg0OTA0Nzk4LCJleHAiOjE3ODU1MDk1OTh9.BdIy2zPkrcWk_saGaeBQxj2ZOAXIqmJEIvGo5ttmD1A
 
 ### Create a new society (requires SuperAdmin token)
 POST http://localhost:5000/api/society
 Content-Type: application/json
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjZhNTdiZWM5MjU3ODM3NWNmZjNiZWIzMyIsInJvbGUiOiJTdXBlckFkbWluIiwiaWF0IjoxNzg0Mjk1NTAyLCJleHAiOjE3ODQ5MDAzMDJ9.wD2q4IUE8GG2qtqX4n9hjCpJO4dkcwcfkxKyIBwh7Fw
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjZhNTdiZWM5MjU3ODM3NWNmZjNiZWIzMyIsInJvbGUiOiJTdXBlckFkbWluIiwiaWF0IjoxNzg0OTA0Nzk4LCJleHAiOjE3ODU1MDk1OTh9.BdIy2zPkrcWk_saGaeBQxj2ZOAXIqmJEIvGo5ttmD1A
 
 {
   "name": "Asmita Mogra Co-Op Housing Society",
@@ -36,8 +36,38 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjZhNTdiZWM5M
 
 ### Get all societies (requires SuperAdmin token)
 GET http://localhost:5000/api/society
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjZhNTdiZWM5MjU3ODM3NWNmZjNiZWIzMyIsInJvbGUiOiJTdXBlckFkbWluIiwiaWF0IjoxNzg0Mjk1NzY0LCJleHAiOjE3ODQ5MDA1NjR9.hYt0oNwoMwsVrXUhcwlhOlP0_wrrxwVztI2XQAZa5u4
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjZhNTdiZWM5MjU3ODM3NWNmZjNiZWIzMyIsInJvbGUiOiJTdXBlckFkbWluIiwiaWF0IjoxNzg0OTA0Nzk4LCJleHAiOjE3ODU1MDk1OTh9.BdIy2zPkrcWk_saGaeBQxj2ZOAXIqmJEIvGo5ttmD1A
 
 ### Get a single society by ID (requires token)
 GET http://localhost:5000/api/society/6a5a30f08d986c89331c61dc
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjZhNTdiZWM5MjU3ODM3NWNmZjNiZWIzMyIsInJvbGUiOiJTdXBlckFkbWluIiwiaWF0IjoxNzg0Mjk1NzY0LCJleHAiOjE3ODQ5MDA1NjR9.hYt0oNwoMwsVrXUhcwlhOlP0_wrrxwVztI2XQAZa5u4
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjZhNTdiZWM5MjU3ODM3NWNmZjNiZWIzMyIsInJvbGUiOiJTdXBlckFkbWluIiwiaWF0IjoxNzg0OTA0Nzk4LCJleHAiOjE3ODU1MDk1OTh9.BdIy2zPkrcWk_saGaeBQxj2ZOAXIqmJEIvGo5ttmD1A
+
+### Register a SocietyAdmin (for testing user routes) — use a real societyId from a society you already created
+POST http://localhost:5000/api/auth/register
+Content-Type: application/json
+
+{
+  "name": "Society Admin Test",
+  "email": "societyadmin@societypro.com",
+  "password": "test1234",
+  "role": "SocietyAdmin",
+  "societyId": "6a5a30f08d986c89331c61dc",
+  "unitNumber": "A-101"
+}
+
+### Get all users in my society (requires SocietyAdmin token)
+GET http://localhost:5000/api/users
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjZhNjM3ZGFkZDlkNjQwNTIxY2MzNzY4OCIsInJvbGUiOiJTb2NpZXR5QWRtaW4iLCJzb2NpZXR5SWQiOiI2YTVhMzBmMDhkOTg2Yzg5MzMxYzYxZGMiLCJpYXQiOjE3ODQ5MDUxMzMsImV4cCI6MTc4NTUwOTkzM30.F4AQSpRPEfTF9Hfx_DJu08xJzLexnqhvndn-ew7Hycw
+
+### Get a single user by ID (requires SocietyAdmin token)
+GET http://localhost:5000/api/users/6a637dadd9d640521cc37688
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjZhNjM3ZGFkZDlkNjQwNTIxY2MzNzY4OCIsInJvbGUiOiJTb2NpZXR5QWRtaW4iLCJzb2NpZXR5SWQiOiI2YTVhMzBmMDhkOTg2Yzg5MzMxYzYxZGMiLCJpYXQiOjE3ODQ5MDUxMzMsImV4cCI6MTc4NTUwOTkzM30.F4AQSpRPEfTF9Hfx_DJu08xJzLexnqhvndn-ew7Hycw
+
+### Update a user (requires SocietyAdmin token)
+PATCH http://localhost:5000/api/users/6a637dadd9d640521cc37688
+Content-Type: application/json
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjZhNjM3ZGFkZDlkNjQwNTIxY2MzNzY4OCIsInJvbGUiOiJTb2NpZXR5QWRtaW4iLCJzb2NpZXR5SWQiOiI2YTVhMzBmMDhkOTg2Yzg5MzMxYzYxZGMiLCJpYXQiOjE3ODQ5MDUxMzMsImV4cCI6MTc4NTUwOTkzM30.F4AQSpRPEfTF9Hfx_DJu08xJzLexnqhvndn-ew7Hycw
+
+{
+  "unitNumber": "B-202"
+}

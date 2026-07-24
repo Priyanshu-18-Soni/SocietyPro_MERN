@@ -8,6 +8,7 @@ const cors = require('cors');
 const authRoutes = require('./routes/authRoutes');
 const testRoutes = require('./routes/testRoutes');
 const societyRoutes = require('./routes/societyRoutes');
+const userRoutes = require('./routes/userRoutes');
 
 const app = express();
 
@@ -22,6 +23,9 @@ app.use('/api/test', testRoutes);
 
 // Society routes
 app.use('/api/society', societyRoutes);
+
+// User routes
+app.use('/api/users', userRoutes);
 
 // Test route
 app.get('/', (req, res) => {
