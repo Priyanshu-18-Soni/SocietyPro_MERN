@@ -58,4 +58,46 @@ const getSocietyById = async (req, res) => {
   }
 };
 
-module.exports = { createSociety, getAllSocieties, getSocietyById };
+// Update a society's details (SuperAdmin only)
+const updateSociety = async (req, res) => {
+  try {
+    const society = await Society.findById(req.params.id);
+
+    if (!society) {
+      return res.status(404).json({ message: 'Society not found' });
+    }
+
+    const { name, address, city, registrationNumber } = req.body;
+    if (name) society.name = name;
+    if (address) society.address = address;
+    if (city) society.city = city;
+    if (registrationNumber) society.registrationNumber = registrationNumber;
+
+    await society.save();
+
+    res.status(200).json({ message: 'Society updated successfully', society });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error while updating society' });
+  }
+};
+
+// Delete a society (SuperAdmin only)
+const deleteSociety = async (req, res) => {
+  try {
+    const society = await Society.findById(req.params.id);
+
+    if (!society) {
+      return res.status(404).json({ message: 'Society not found' });
+    }
+
+    await society.deleteOne();
+
+    res.status(200).json({ message: 'Society deleted successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error while deleting society' });
+  }
+};
+
+module.exports = { createSociety, getAllSocieties, getSocietyById, updateSociety, deleteSociety };

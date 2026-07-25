@@ -1,7 +1,7 @@
 @baseUrl = http://localhost:5000
-@token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjZhNTdiZWM5MjU3ODM3NWNmZjNiZWIzMyIsInJvbGUiOiJTdXBlckFkbWluIiwiaWF0IjoxNzg0OTY4MjgyLCJleHAiOjE3ODU1NzMwODJ9.TwkPqvL3Aerb1In-LHKPrwUgNWIRX04nlETkdNOLQsQ
-@societyId = 6a57bec92578375cff3beb33
-@userId = 6a57bec92578375cff3beb33
+@token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjZhNTdiZWM5MjU3ODM3NWNmZjNiZWIzMyIsInJvbGUiOiJTdXBlckFkbWluIiwiaWF0IjoxNzg0OTY5MDM5LCJleHAiOjE3ODU1NzM4Mzl9.mTtmiDUbhjBk8rVhBJKfVKaPx8Gr9_Tyfo9V5crOlFQ
+@societyId = 6a5a30f08d986c89331c61dc
+@userId = 
 
 ### Register a new user
 POST {{baseUrl}}/api/auth/register
@@ -76,3 +76,16 @@ Authorization: Bearer {{token}}
 {
   "unitNumber": "B-202"
 }
+
+### Update a society (SuperAdmin only)
+PATCH {{baseUrl}}/api/society/{{societyId}}
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "city": "Navi Mumbai"
+}
+
+### Delete a society (SuperAdmin only)
+DELETE {{baseUrl}}/api/society/{{societyId}}
+Authorization: Bearer {{token}}
