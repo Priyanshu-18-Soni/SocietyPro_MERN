@@ -1,7 +1,7 @@
 @baseUrl = http://localhost:5000
-@token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjZhNTdiZWM5MjU3ODM3NWNmZjNiZWIzMyIsInJvbGUiOiJTdXBlckFkbWluIiwiaWF0IjoxNzg0OTA2MjgxLCJleHAiOjE3ODU1MTEwODF9.-44Qe9shKmuqwOMOTrTCkr6i-QqG8KDDmul1Chpj6iY
-@societyId = 6a5a30998d986c89331c61db
-@userId = 6a5a30998d986c89331c61db
+@token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjZhNTdiZWM5MjU3ODM3NWNmZjNiZWIzMyIsInJvbGUiOiJTdXBlckFkbWluIiwiaWF0IjoxNzg0OTY4MjgyLCJleHAiOjE3ODU1NzMwODJ9.TwkPqvL3Aerb1In-LHKPrwUgNWIRX04nlETkdNOLQsQ
+@societyId = 6a57bec92578375cff3beb33
+@userId = 6a57bec92578375cff3beb33
 
 ### Register a new user
 POST {{baseUrl}}/api/auth/register
