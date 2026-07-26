@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import axiosInstance from '../api/axiosInstance';
 
@@ -158,6 +158,16 @@ const Login = () => {
               </button>
             </div>
           </form>
+
+          {/* Redirection Link to Register */}
+          <div className="mt-6 text-center border-t border-border pt-4">
+            <p className="text-sm text-slate">
+              Don't have an account?{' '}
+              <Link to="/register" className="text-primary hover:underline hover:text-primary-light font-medium transition-colors">
+                Register
+              </Link>
+            </p>
+          </div>
         </div>
       </div>
     </div>

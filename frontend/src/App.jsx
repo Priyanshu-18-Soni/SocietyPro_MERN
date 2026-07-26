@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/Login';
+import Register from './pages/Register';
 import SocietyManagement from './pages/SocietyManagement';
 
 function App() {
@@ -12,6 +13,8 @@ function App() {
         <Routes>
           {/* Public Login Route */}
           <Route path="/login" element={<Login />} />
+          {/* Public Register Route */}
+          <Route path="/register" element={<Register />} />
 
           {/* Protected Society Management Route (SuperAdmin only) */}
           <Route
