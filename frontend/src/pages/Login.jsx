@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import axiosInstance from '../api/axiosInstance';
@@ -44,10 +44,10 @@ const Login = () => {
       login(token, user);
       
       // Redirect based on role or home
-      if (user.role === 'SuperAdmin') {
+      if (['SuperAdmin', 'SocietyAdmin', 'Resident'].includes(user.role)) {
         navigate('/');
       } else {
-        setApiError('Access restricted. Only SuperAdmin users can log in to this management portal.');
+        setApiError('Access restricted. Unauthorized role.');
       }
     } catch (err) {
       console.error(err);

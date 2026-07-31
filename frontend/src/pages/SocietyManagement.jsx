@@ -1,9 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
+import { useState, useEffect } from 'react';
 import axiosInstance from '../api/axiosInstance';
 
 const SocietyManagement = () => {
-  const { user, logout } = useAuth();
   const [societies, setSocieties] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -44,6 +42,7 @@ const SocietyManagement = () => {
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchSocieties();
   }, []);
 
@@ -140,34 +139,9 @@ const SocietyManagement = () => {
   };
 
   return (
-    <div className="min-h-screen bg-surface font-sans text-charcoal">
-      {/* Top Header Navigation */}
-      <header className="sticky top-0 bg-white border-b border-border z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <span className="text-2xl font-bold text-primary">SocietyPro</span>
-            <span className="hidden sm:inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold bg-primary-subtle text-primary">
-              Portal
-            </span>
-          </div>
-
-          <div className="flex items-center space-x-4">
-            <div className="text-right hidden md:block">
-              <p className="text-sm font-semibold text-charcoal">{user?.name || 'SuperAdmin'}</p>
-              <p className="text-xs text-slate">{user?.role || 'Administrator'}</p>
-            </div>
-            <button
-              onClick={logout}
-              className="bg-white border border-border text-charcoal hover:bg-slate-50 font-medium px-4 py-2 text-sm rounded-lg transition-colors cursor-pointer"
-            >
-              Sign Out
-            </button>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content Dashboard */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <>
+      {/* Main Content */}
+      <div className="space-y-6">
         
         {/* Page Title & Add New button */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-8 gap-4">
@@ -364,7 +338,7 @@ const SocietyManagement = () => {
             </div>
           </>
         )}
-      </main>
+      </div>
 
       {/* Add / Edit Dialog Modal Overlay */}
       {isFormModalOpen && (
@@ -561,7 +535,7 @@ const SocietyManagement = () => {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 };
 

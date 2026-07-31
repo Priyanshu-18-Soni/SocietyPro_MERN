@@ -1,9 +1,10 @@
-import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
+import Layout from './components/Layout';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import Dashboard from './pages/Dashboard';
 import SocietyManagement from './pages/SocietyManagement';
 
 function App() {
@@ -16,12 +17,26 @@ function App() {
           {/* Public Register Route */}
           <Route path="/register" element={<Register />} />
 
-          {/* Protected Society Management Route (SuperAdmin only) */}
+          {/* Protected Dashboard Route (All authenticated roles) */}
           <Route
             path="/"
             element={
+              <ProtectedRoute>
+                <Layout>
+                  <Dashboard />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Protected Society Management Route (SuperAdmin only) */}
+          <Route
+            path="/societies"
+            element={
               <ProtectedRoute allowedRoles={['SuperAdmin']}>
-                <SocietyManagement />
+                <Layout>
+                  <SocietyManagement />
+                </Layout>
               </ProtectedRoute>
             }
           />
