@@ -9,6 +9,7 @@ const authRoutes = require('./routes/authRoutes');
 const testRoutes = require('./routes/testRoutes');
 const societyRoutes = require('./routes/societyRoutes');
 const userRoutes = require('./routes/userRoutes');
+const paymentRoutes = require('./routes/paymentRoutes');
 
 const app = express();
 
@@ -27,6 +28,9 @@ app.use('/api/society', societyRoutes);
 // User routes
 app.use('/api/users', userRoutes);
 
+// Payment routes
+app.use('/api/payments', paymentRoutes);
+
 // Test route
 app.get('/', (req, res) => {
     res.send('SocietyPro backend is running');
@@ -40,4 +44,6 @@ mongoose.connect(process.env.MONGO_URI)
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
+    console.log('RAZORPAY_KEY_ID present:', !!process.env.RAZORPAY_KEY_ID);
+    console.log('RAZORPAY_KEY_SECRET present:', !!process.env.RAZORPAY_KEY_SECRET);
 });
