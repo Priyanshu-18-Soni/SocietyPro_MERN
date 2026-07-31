@@ -89,3 +89,23 @@ Authorization: Bearer {{token}}
 ### Delete a society (SuperAdmin only)
 DELETE {{baseUrl}}/api/society/{{societyId}}
 Authorization: Bearer {{token}}
+
+### Create a Razorpay order (Resident/SocietyAdmin token required)
+POST {{baseUrl}}/api/payments/create-order
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "amount": 1500
+}
+
+### Verify a Razorpay payment (after frontend checkout completes)
+POST {{baseUrl}}/api/payments/verify
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "razorpay_order_id": "order_XXXXXXXXXXXX",
+  "razorpay_payment_id": "pay_XXXXXXXXXXXX",
+  "razorpay_signature": "your_generated_signature_here"
+}
