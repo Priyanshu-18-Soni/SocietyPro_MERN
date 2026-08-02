@@ -6,6 +6,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import SocietyManagement from './pages/SocietyManagement';
+import Payments from './pages/Payments';
 
 function App() {
   return (
@@ -36,6 +37,18 @@ function App() {
               <ProtectedRoute allowedRoles={['SuperAdmin']}>
                 <Layout>
                   <SocietyManagement />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Protected Payments Route */}
+          <Route
+            path="/payments"
+            element={
+              <ProtectedRoute>
+                <Layout>
+                  <Payments />
                 </Layout>
               </ProtectedRoute>
             }

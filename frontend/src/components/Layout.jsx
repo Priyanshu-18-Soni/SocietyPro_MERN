@@ -52,8 +52,7 @@ const Layout = ({ children }) => {
       name: 'Payments',
       path: '/payments',
       icon: CreditCard,
-      disabled: true,
-      badge: 'Coming Soon',
+      disabled: false,
       visible: true
     },
     {
