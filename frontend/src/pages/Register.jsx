@@ -1,13 +1,21 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import axiosInstance from '../api/axiosInstance';
 
 const Register = () => {
+  const [searchParams] = useSearchParams();
+  const roleQuery = searchParams.get('role');
+  const getInitialRole = () => {
+    if (roleQuery === 'admin') return 'SocietyAdmin';
+    if (roleQuery === 'resident') return 'Resident';
+    return 'Resident';
+  };
+
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState('Resident'); // Default role
+  const [role, setRole] = useState(getInitialRole);
   const [societyId, setSocietyId] = useState('');
   const [unitNumber, setUnitNumber] = useState('');
 
