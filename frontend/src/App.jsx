@@ -7,6 +7,7 @@ import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import SocietyManagement from './pages/SocietyManagement';
 import Payments from './pages/Payments';
+import ResidentManagement from './pages/ResidentManagement';
 
 function App() {
   return (
@@ -37,6 +38,18 @@ function App() {
               <ProtectedRoute allowedRoles={['SuperAdmin']}>
                 <Layout>
                   <SocietyManagement />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Protected Resident Management Route (SocietyAdmin only) */}
+          <Route
+            path="/residents"
+            element={
+              <ProtectedRoute allowedRoles={['SocietyAdmin']}>
+                <Layout>
+                  <ResidentManagement />
                 </Layout>
               </ProtectedRoute>
             }

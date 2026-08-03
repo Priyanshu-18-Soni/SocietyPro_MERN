@@ -44,9 +44,8 @@ const Layout = ({ children }) => {
       name: 'Residents',
       path: '/residents',
       icon: Users,
-      disabled: true,
-      badge: 'Coming Soon',
-      visible: true
+      disabled: false,
+      visible: user?.role === 'SocietyAdmin'
     },
     {
       name: 'Payments',
