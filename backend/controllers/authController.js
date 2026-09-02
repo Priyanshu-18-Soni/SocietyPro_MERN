@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const Society = require('../models/Society');
 
 // Register a new user
 const registerUser = async (req, res) => {
@@ -9,6 +10,14 @@ const registerUser = async (req, res) => {
 
     if (!name || !email || !password || !role) {
       return res.status(400).json({ message: 'Please provide all required fields' });
+    }
+
+    // Validate societyId for non-SuperAdmin roles
+    if (role !== 'SuperAdmin' && societyId) {
+      const societyExists = await Society.findById(societyId);
+      if (!societyExists) {
+        return res.status(400).json({ message: 'Invalid societyId — no matching society found' });
+      }
     }
 
     const existingUser = await User.findOne({ email });
