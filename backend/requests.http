@@ -109,3 +109,24 @@ Authorization: Bearer {{token}}
   "razorpay_payment_id": "pay_XXXXXXXXXXXX",
   "razorpay_signature": "your_generated_signature_here"
 }
+
+### Generate a new bill (SocietyAdmin only)
+POST {{baseUrl}}/api/payments/generate-bill
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "residentId": "{{userId}}",
+  "amount": 1500,
+  "unitNumber": "A-101",
+  "month": "August 2026",
+  "dueDate": "2026-08-15"
+}
+
+### Get bills/payment history (Resident/SocietyAdmin)
+GET {{baseUrl}}/api/payments
+Authorization: Bearer {{token}}
+
+### Get bills with status filter
+GET {{baseUrl}}/api/payments?status=created
+Authorization: Bearer {{token}}

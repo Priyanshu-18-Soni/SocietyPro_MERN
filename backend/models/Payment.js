@@ -30,6 +30,18 @@ const paymentSchema = new mongoose.Schema({
     enum: ['created', 'authorized', 'captured', 'failed'],
     default: 'created',
   },
+  unitNumber: {
+    type: String,
+    required: true,
+  },
+  month: {
+    type: String,
+    required: true,
+  },
+  dueDate: {
+    type: Date,
+    required: true,
+  },
   createdAt: {
     type: Date,
     default: Date.now,
