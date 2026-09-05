@@ -1,17 +1,20 @@
 @baseUrl = http://localhost:5000
 @token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjZhNTdiZWM5MjU3ODM3NWNmZjNiZWIzMyIsInJvbGUiOiJTdXBlckFkbWluIiwiaWF0IjoxNzg0OTY5MDM5LCJleHAiOjE3ODU1NzM4Mzl9.mTtmiDUbhjBk8rVhBJKfVKaPx8Gr9_Tyfo9V5crOlFQ
 @societyId = 6a5a30f08d986c89331c61dc
-@userId = 
+@userId =
 
-### Register a new user
-POST {{baseUrl}}/api/auth/register
+### Register a new SocietyOwner (creates society + owner together)
+POST {{baseUrl}}/api/auth/register-owner
 Content-Type: application/json
 
 {
-  "name": "Test Admin",
-  "email": "testadmin2@societypro.com",
-  "password": "test1234",
-  "role": "SuperAdmin"
+  "name": "John Doe",
+  "email": "john.doe@example.com",
+  "password": "securepass123",
+  "societyName": "Green Valley Society",
+  "address": "123 Green Street",
+  "city": "Springfield",
+  "registrationNumber": "GV2026001"
 }
 
 ### Login existing user
@@ -19,8 +22,20 @@ POST {{baseUrl}}/api/auth/login
 Content-Type: application/json
 
 {
-  "email": "testadmin2@societypro.com",
-  "password": "test1234"
+  "email": "john.doe@example.com",
+  "password": "securepass123"
+}
+
+### Register a new Resident (joins existing society via societyCode)
+POST {{baseUrl}}/api/auth/register-resident
+Content-Type: application/json
+
+{
+  "name": "Jane Smith",
+  "email": "jane.smith@example.com",
+  "password": "residentpass456",
+  "societyCode": "ABC1234",
+  "unitNumber": "B-205"
 }
 
 ### Test protected route

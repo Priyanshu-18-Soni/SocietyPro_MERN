@@ -17,15 +17,21 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['SuperAdmin', 'SocietyAdmin', 'Resident'],
+    enum: ['SocietyOwner', 'Committee', 'Resident'],
     required: true,
   },
   societyId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Society',
-    required: function () {
-      return this.role !== 'SuperAdmin';
-    },
+    required: true,
+  },
+  customLabel: {
+    type: String,
+    required: false,
+  },
+  permissions: {
+    type: [String],
+    default: [],
   },
   unitNumber: {
     type: String,

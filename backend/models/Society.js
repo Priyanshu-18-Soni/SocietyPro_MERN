@@ -16,6 +16,16 @@ const societySchema = new mongoose.Schema({
   registrationNumber: {
     type: String,
   },
+  societyCode: {
+    type: String,
+    required: true,
+    unique: true,
+  },
+  ownerId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true,
+  },
   createdAt: {
     type: Date,
     default: Date.now,
