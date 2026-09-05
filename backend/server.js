@@ -10,6 +10,7 @@ const testRoutes = require('./routes/testRoutes');
 const societyRoutes = require('./routes/societyRoutes');
 const userRoutes = require('./routes/userRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
+const committeeRoutes = require('./routes/committeeRoutes');
 
 const app = express();
 
@@ -30,6 +31,9 @@ app.use('/api/users', userRoutes);
 
 // Payment routes
 app.use('/api/payments', paymentRoutes);
+
+// Committee routes
+app.use('/api/committee', committeeRoutes);
 
 // Test route
 app.get('/', (req, res) => {

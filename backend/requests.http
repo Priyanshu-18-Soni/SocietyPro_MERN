@@ -145,3 +145,35 @@ Authorization: Bearer {{token}}
 ### Get bills with status filter
 GET {{baseUrl}}/api/payments?status=created
 Authorization: Bearer {{token}}
+
+### Committee Management Endpoints
+
+# Create a committee member
+POST {{baseUrl}}/api/committee
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "Treasurer Test",
+  "email": "treasurer@example.com",
+  "password": "treasurerpass1",
+  "customLabel": "Treasurer",
+  "permissions": ["manageBills"]
+}
+
+### Get all committee members
+GET {{baseUrl}}/api/committee
+Authorization: Bearer {{token}}
+
+# Update committee member permissions
+PATCH {{baseUrl}}/api/committee/{{committeeId}}
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "permissions": ["manageBills", "manageResidents"]
+}
+
+# Delete a committee member
+DELETE {{baseUrl}}/api/committee/{{committeeId}}
+Authorization: Bearer {{token}}
