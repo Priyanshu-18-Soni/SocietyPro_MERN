@@ -1,1 +1,0 @@
-- [SocietyPro Role Model V2 Phase 4 - Committee Management Endpoints](./.claude/projects/C--Users-priya-Desktop-SocietyPro-MERN/memory/committee-management-phase4.md)

@@ -43,7 +43,7 @@ const registerOwner = async (req, res) => {
     });
 
     const token = jwt.sign(
-      { id: user._id, role: user.role, societyId: user.societyId },
+      { id: user._id, role: user.role, societyId: user.societyId, permissions: user.permissions },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -101,7 +101,7 @@ const registerResident = async (req, res) => {
     });
 
     const token = jwt.sign(
-      { id: newUser._id, role: newUser.role, societyId: newUser.societyId },
+      { id: newUser._id, role: newUser.role, societyId: newUser.societyId, permissions: newUser.permissions },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -142,7 +142,7 @@ const loginUser = async (req, res) => {
     }
 
     const token = jwt.sign(
-      { id: user._id, role: user.role, societyId: user.societyId },
+      { id: user._id, role: user.role, societyId: user.societyId, permissions: user.permissions },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );

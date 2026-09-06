@@ -16,6 +16,7 @@ const tenantMiddleware = (req, res, next) => {
       id: decoded.id,
       role: decoded.role,
       societyId: decoded.societyId,
+      permissions: decoded.permissions || [],
     };
 
     next();
