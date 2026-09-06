@@ -6,13 +6,21 @@ const User = require('../models/User');
 // Create a Razorpay order (Resident initiates a payment)
 const createOrder = async (req, res) => {
   try {
-    const { amount } = req.body; // amount in rupees (not paise) from frontend
+    const { amount } = req.body;
 
     if (!amount || amount <= 0) {
       return res.status(400).json({ message: 'Valid amount is required' });
     }
 
+    const resident = await User.findById(req.user.id);
+    if (!resident) {
+      return res.status(404).json({ message: 'Resident not found' });
+    }
+
     const amountInPaise = Math.round(amount * 100);
+    const now = new Date();
+    const currentMonth = now.toLocaleString('default', { month: 'long', year: 'numeric' });
+    const paymentDueDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
     const options = {
       amount: amountInPaise,
@@ -27,6 +35,9 @@ const createOrder = async (req, res) => {
       residentId: req.user.id,
       amount: amountInPaise,
       currency: 'INR',
+      unitNumber: resident.unitNumber || 'N/A',
+      month: currentMonth,
+      dueDate: paymentDueDate,
       razorpayOrderId: razorpayOrder.id,
       status: 'created',
     });
@@ -88,36 +99,30 @@ const verifyPayment = async (req, res) => {
   }
 };
 
-// Generate a new bill (SocietyAdmin creates a bill for a resident)
+// Generate a new bill (SocietyOwner or Committee with manageBills permission creates a bill for a resident)
 const generateBill = async (req, res) => {
   try {
     const { residentId, amount, unitNumber, month, dueDate } = req.body;
 
-    // Validate all required fields
     if (!residentId || !amount || !unitNumber || !month || !dueDate) {
       return res.status(400).json({ message: 'Please provide all required fields: residentId, amount, unitNumber, month, dueDate' });
     }
 
-    // Validate amount
     if (amount <= 0) {
       return res.status(400).json({ message: 'Amount must be greater than zero' });
     }
 
-    // Find the resident and verify they belong to the SocietyAdmin's society
     const resident = await User.findById(residentId);
     if (!resident) {
       return res.status(404).json({ message: 'Resident not found' });
     }
 
-    // Check if resident belongs to the same society as the SocietyAdmin
     if (String(resident.societyId) !== String(req.user.societyId)) {
       return res.status(403).json({ message: 'Access denied: resident belongs to a different society' });
     }
 
-    // Convert amount from rupees to paise (consistent with createOrder)
     const amountInPaise = Math.round(amount * 100);
 
-    // Create the bill (payment record with status 'created')
     const bill = await Payment.create({
       societyId: req.user.societyId,
       residentId,
@@ -125,8 +130,8 @@ const generateBill = async (req, res) => {
       currency: 'INR',
       unitNumber,
       month,
-      dueDate: new Date(dueDate), // Ensure it's a Date object
-      status: 'created'
+      dueDate: new Date(dueDate),
+      status: 'created',
     });
 
     res.status(201).json({
@@ -142,7 +147,7 @@ const generateBill = async (req, res) => {
         dueDate: bill.dueDate,
         status: bill.status,
         createdAt: bill.createdAt
-      }
+      },
     });
   } catch (err) {
     console.error(err);
@@ -150,41 +155,33 @@ const generateBill = async (req, res) => {
   }
 };
 
-// Get bills/payment history with role-based filtering and optional status filter
+// Get bills/payment history with role-based filtering
 const getBills = async (req, res) => {
   try {
-    // Build base query based on user role
     let query = {};
+
     if (req.user.role === 'Resident') {
-      // Residents can only see their own bills
       query.residentId = req.user.id;
-    } else if (req.user.role === 'SocietyAdmin') {
-      // SocietyAdmins can see all bills in their society
+    } else if (req.user.role === 'SocietyOwner') {
       query.societyId = req.user.societyId;
-    } else {
-      // SuperAdmins might want to see all bills, but for now restrict to their society if they have one
-      // or return empty if they don't belong to a society
-      if (req.user.societyId) {
+    } else if (req.user.role === 'Committee') {
+      if (Array.isArray(req.user.permissions) && req.user.permissions.includes('manageBills')) {
         query.societyId = req.user.societyId;
       } else {
-        // SuperAdmin without society sees nothing (or could be changed to see all)
-        return res.status(200).json({ bills: [] });
+        return res.status(403).json({ message: 'Access denied. Missing required permission: manageBills' });
       }
+    } else {
+      return res.status(403).json({ message: 'Access denied. Insufficient permissions.' });
     }
 
-    // Add status filter if provided
     if (req.query.status) {
       const validStatuses = ['created', 'authorized', 'captured', 'failed'];
       if (validStatuses.includes(req.query.status)) {
         query.status = req.query.status;
       }
-      // If invalid status is provided, we ignore it (could also return 400)
     }
 
-    // Find bills with sorting (newest first)
-    const bills = await Payment.find(query)
-      .sort({ createdAt: -1 })
-      .select('-__v'); // Exclude version key
+    const bills = await Payment.find(query).sort({ createdAt: -1 }).select('-__v');
 
     res.status(200).json({ bills });
   } catch (err) {

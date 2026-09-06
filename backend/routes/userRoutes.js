@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const tenantMiddleware = require('../middleware/tenantMiddleware');
-const requireRole = require('../middleware/roleMiddleware');
+const requirePermission = require('../middleware/requirePermission');
 const {
   getSocietyUsers,
   getUserById,
@@ -9,9 +9,9 @@ const {
   deleteUser,
 } = require('../controllers/userController');
 
-router.get('/', tenantMiddleware, requireRole('SocietyAdmin'), getSocietyUsers);
-router.get('/:id', tenantMiddleware, requireRole('SocietyAdmin'), getUserById);
-router.patch('/:id', tenantMiddleware, requireRole('SocietyAdmin'), updateUser);
-router.delete('/:id', tenantMiddleware, requireRole('SocietyAdmin'), deleteUser);
+router.get('/', tenantMiddleware, requirePermission('manageResidents'), getSocietyUsers);
+router.get('/:id', tenantMiddleware, requirePermission('manageResidents'), getUserById);
+router.patch('/:id', tenantMiddleware, requirePermission('manageResidents'), updateUser);
+router.delete('/:id', tenantMiddleware, requirePermission('manageResidents'), deleteUser);
 
 module.exports = router;
