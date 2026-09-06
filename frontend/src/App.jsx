@@ -6,6 +6,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import SocietyManagement from './pages/SocietyManagement';
+import CommitteeManagement from './pages/CommitteeManagement';
 import Payments from './pages/Payments';
 import ResidentManagement from './pages/ResidentManagement';
 
@@ -38,6 +39,18 @@ function App() {
               <ProtectedRoute allowedRoles={['SocietyOwner', 'Committee']}>
                 <Layout>
                   <SocietyManagement />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Protected Committee Management Route (SocietyOwner only) */}
+          <Route
+            path="/committee"
+            element={
+              <ProtectedRoute allowedRoles={['SocietyOwner']}>
+                <Layout>
+                  <CommitteeManagement />
                 </Layout>
               </ProtectedRoute>
             }

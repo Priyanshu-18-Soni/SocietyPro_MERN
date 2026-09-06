@@ -5,6 +5,7 @@ import {
   Home, 
   Building, 
   Users, 
+  UserCheck,
   CreditCard, 
   Bell, 
   Menu, 
@@ -38,6 +39,13 @@ const Layout = ({ children }) => {
       icon: Building,
       disabled: false,
       visible: user?.role === 'SocietyOwner' || user?.role === 'Committee'
+    },
+    {
+      name: 'Committee',
+      path: '/committee',
+      icon: UserCheck,
+      disabled: false,
+      visible: user?.role === 'SocietyOwner'
     },
     {
       name: 'Residents',
