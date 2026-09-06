@@ -1,15 +1,32 @@
 import { useState, useEffect } from 'react';
+import { useAuth } from '../context/AuthContext';
 import axiosInstance from '../api/axiosInstance';
+import { 
+  Building2, 
+  Copy, 
+  Check, 
+  Edit3, 
+  X, 
+  ShieldCheck, 
+  MapPin, 
+  FileText, 
+  Calendar, 
+  AlertCircle, 
+  CheckCircle2,
+  Lock
+} from 'lucide-react';
 
 const SocietyManagement = () => {
-  const [societies, setSocieties] = useState([]);
+  const { user } = useAuth();
+  const isOwner = user?.role === 'SocietyOwner';
+  const societyId = user?.societyId;
+
+  const [society, setSociety] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  
-  // Modal states for Add/Edit
-  const [isFormModalOpen, setIsFormModalOpen] = useState(false);
-  const [formMode, setFormMode] = useState('add'); // 'add' or 'edit'
-  const [selectedSocietyId, setSelectedSocietyId] = useState(null);
+
+  // Editing state
+  const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     address: '',
@@ -17,34 +34,55 @@ const SocietyManagement = () => {
     registrationNumber: '',
   });
   const [formErrors, setFormErrors] = useState({});
-  const [formSubmitLoading, setFormSubmitLoading] = useState(false);
-  const [formSubmitError, setFormSubmitError] = useState('');
+  const [saveLoading, setSaveLoading] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState('');
+  const [copied, setCopied] = useState(false);
 
-  // Modal states for Delete Confirmation
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [societyToDelete, setSocietyToDelete] = useState(null);
-  const [deleteLoading, setDeleteLoading] = useState(false);
+  // Fetch society on mount or when societyId changes
+  const fetchSociety = async () => {
+    if (!societyId) {
+      setError('No society associated with your account.');
+      setLoading(false);
+      return;
+    }
 
-  // Fetch all societies on mount
-  const fetchSocieties = async () => {
     setLoading(true);
     setError('');
     try {
-      const response = await axiosInstance.get('/society');
-      // Backend returns { societies: [...] }
-      setSocieties(response.data.societies || []);
+      const response = await axiosInstance.get(`/society/${societyId}`);
+      const data = response.data.society;
+      setSociety(data);
+      setFormData({
+        name: data.name || '',
+        address: data.address || '',
+        city: data.city || '',
+        registrationNumber: data.registrationNumber || '',
+      });
     } catch (err) {
       console.error(err);
-      setError(err.response?.data?.message || 'Failed to fetch societies list. Please try again.');
+      setError(err.response?.data?.message || 'Failed to fetch society details. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    fetchSocieties();
-  }, []);
+    fetchSociety();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [societyId]);
+
+  // Copy societyCode to clipboard
+  const handleCopyCode = async () => {
+    if (!society?.societyCode) return;
+    try {
+      await navigator.clipboard.writeText(society.societyCode);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    }
+  };
 
   // Form Validation
   const validateForm = () => {
@@ -56,333 +94,231 @@ const SocietyManagement = () => {
     return Object.keys(errors).length === 0;
   };
 
-  // Open modal for Add
-  const handleOpenAddModal = () => {
-    setFormMode('add');
-    setSelectedSocietyId(null);
-    setFormData({
-      name: '',
-      address: '',
-      city: '',
-      registrationNumber: '',
-    });
+  // Cancel edit mode
+  const handleCancelEdit = () => {
+    if (society) {
+      setFormData({
+        name: society.name || '',
+        address: society.address || '',
+        city: society.city || '',
+        registrationNumber: society.registrationNumber || '',
+      });
+    }
     setFormErrors({});
-    setFormSubmitError('');
-    setIsFormModalOpen(true);
+    setIsEditing(false);
   };
 
-  // Open modal for Edit
-  const handleOpenEditModal = (society) => {
-    setFormMode('edit');
-    setSelectedSocietyId(society._id);
-    setFormData({
-      name: society.name || '',
-      address: society.address || '',
-      city: society.city || '',
-      registrationNumber: society.registrationNumber || '',
-    });
-    setFormErrors({});
-    setFormSubmitError('');
-    setIsFormModalOpen(true);
-  };
-
-  // Submit Add/Edit Form
-  const handleFormSubmit = async (e) => {
+  // Handle Save
+  const handleSave = async (e) => {
     e.preventDefault();
-    setFormSubmitError('');
+    if (!isOwner) return;
+
     if (!validateForm()) return;
 
-    setFormSubmitLoading(true);
+    setSaveLoading(true);
+    setSaveSuccess('');
+    setError('');
+
     try {
-      if (formMode === 'add') {
-        const response = await axiosInstance.post('/society', formData);
-        // Refresh local state list
-        setSocieties((prev) => [...prev, response.data.society]);
-      } else {
-        const response = await axiosInstance.patch(`/society/${selectedSocietyId}`, formData);
-        // Update updated item in local state list
-        setSocieties((prev) =>
-          prev.map((soc) => (soc._id === selectedSocietyId ? response.data.society : soc))
-        );
-      }
-      setIsFormModalOpen(false);
+      const payload = {
+        name: formData.name.trim(),
+        address: formData.address.trim(),
+        city: formData.city.trim(),
+        registrationNumber: formData.registrationNumber.trim(),
+      };
+
+      const response = await axiosInstance.patch(`/society/${societyId}`, payload);
+      const updated = response.data.society;
+      setSociety(updated);
+      setFormData({
+        name: updated.name || '',
+        address: updated.address || '',
+        city: updated.city || '',
+        registrationNumber: updated.registrationNumber || '',
+      });
+      setIsEditing(false);
+      setSaveSuccess('Society profile updated successfully!');
+      setTimeout(() => setSaveSuccess(''), 4000);
     } catch (err) {
       console.error(err);
-      setFormSubmitError(err.response?.data?.message || 'Failed to save society details. Please try again.');
+      setError(err.response?.data?.message || 'Failed to update society details. Please try again.');
     } finally {
-      setFormSubmitLoading(false);
-    }
-  };
-
-  // Open Delete Confirmation modal
-  const handleOpenDeleteModal = (society) => {
-    setSocietyToDelete(society);
-    setIsDeleteModalOpen(true);
-  };
-
-  // Execute Delete
-  const handleDeleteConfirm = async () => {
-    if (!societyToDelete) return;
-    setDeleteLoading(true);
-    try {
-      await axiosInstance.delete(`/society/${societyToDelete._id}`);
-      // Remove from local state list
-      setSocieties((prev) => prev.filter((soc) => soc._id !== societyToDelete._id));
-      setIsDeleteModalOpen(false);
-    } catch (err) {
-      console.error(err);
-      alert(err.response?.data?.message || 'Failed to delete society. Please try again.');
-    } finally {
-      setDeleteLoading(false);
-      setSocietyToDelete(null);
+      setSaveLoading(false);
     }
   };
 
   return (
-    <>
-      {/* Main Content */}
-      <div className="space-y-6">
-        
-        {/* Page Title & Add New button */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-8 gap-4">
-          <div>
-            <h1 className="text-3xl font-bold text-charcoal tracking-tight">Society Management</h1>
-            <p className="text-sm text-slate mt-1">Add, update, or remove housing societies from the platform.</p>
+    <div className="space-y-6 max-w-5xl mx-auto">
+      {/* Header Section */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-border pb-6">
+        <div>
+          <div className="flex items-center space-x-2.5">
+            <h1 className="text-3xl font-bold text-charcoal tracking-tight">My Society</h1>
+            {isOwner ? (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-[#bca030] border border-amber-200">
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>Owner View</span>
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-200">
+                <Lock className="w-3.5 h-3.5" />
+                <span>Committee (Read-Only)</span>
+              </span>
+            )}
           </div>
-          <div>
-            <button
-              onClick={handleOpenAddModal}
-              className="w-full sm:w-auto h-11 bg-primary hover:bg-primary-light text-white font-medium px-6 py-2.5 rounded-lg transition-colors cursor-pointer flex items-center justify-center space-x-2"
-            >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-              </svg>
-              <span>Add New Society</span>
-            </button>
-          </div>
+          <p className="text-sm text-slate mt-1">
+            Society profile, residential join code, and registration information.
+          </p>
         </div>
 
-        {/* Dashboard Widgets section */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-white rounded-xl shadow-sm border border-border p-6 flex items-center space-x-4">
-            <div className="p-3.5 rounded-lg bg-primary-subtle text-primary">
-              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-              </svg>
-            </div>
-            <div>
-              <p className="text-sm font-medium text-slate">Total Registered Societies</p>
-              <h3 className="text-2xl font-bold text-charcoal">{loading ? '...' : societies.length}</h3>
-            </div>
+        {/* Edit Button for SocietyOwner only */}
+        {isOwner && !loading && society && (
+          <div>
+            {isEditing ? (
+              <button
+                type="button"
+                onClick={handleCancelEdit}
+                className="h-11 bg-white hover:bg-slate-50 text-slate font-medium px-5 py-2.5 rounded-lg border border-border transition-colors cursor-pointer flex items-center justify-center space-x-2 shadow-sm"
+              >
+                <X className="w-4 h-4" />
+                <span>Cancel</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setIsEditing(true)}
+                className="h-11 bg-[#0F172A] hover:bg-[#1E293B] text-[#D4AF37] border border-[#D4AF37]/30 font-semibold px-5 py-2.5 rounded-lg transition-colors cursor-pointer flex items-center justify-center space-x-2 shadow-sm active:scale-98"
+              >
+                <Edit3 className="w-4 h-4" />
+                <span>Edit Details</span>
+              </button>
+            )}
           </div>
-
-          <div className="bg-white rounded-xl shadow-sm border border-border p-6 flex items-center space-x-4">
-            <div className="p-3.5 rounded-lg bg-emerald-50 text-success">
-              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-              </svg>
-            </div>
-            <div>
-              <p className="text-sm font-medium text-slate">System Security</p>
-              <h3 className="text-2xl font-bold text-charcoal">RBAC Active</h3>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl shadow-sm border border-border p-6 flex items-center space-x-4">
-            <div className="p-3.5 rounded-lg bg-blue-50 text-info">
-              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-            <div>
-              <p className="text-sm font-medium text-slate">Last Refresh</p>
-              <p className="text-base font-semibold text-charcoal">Just now</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Errors / Main List Table */}
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-error/20 text-error rounded-lg flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
-              <span className="text-sm font-medium">{error}</span>
-            </div>
-            <button
-              onClick={fetchSocieties}
-              className="text-sm text-error underline hover:text-red-700 font-semibold cursor-pointer"
-            >
-              Retry
-            </button>
-          </div>
-        )}
-
-        {/* Societies Grid or Table list */}
-        {loading ? (
-          /* Loading Skeleton States */
-          <div className="bg-white rounded-xl border border-border p-6 space-y-4">
-            <div className="h-6 bg-slate-100 rounded w-1/4 animate-pulse"></div>
-            <div className="space-y-3 pt-4">
-              <div className="grid grid-cols-4 gap-4">
-                <div className="h-4 bg-slate-100 rounded col-span-1 animate-pulse"></div>
-                <div className="h-4 bg-slate-100 rounded col-span-1 animate-pulse"></div>
-                <div className="h-4 bg-slate-100 rounded col-span-1 animate-pulse"></div>
-                <div className="h-4 bg-slate-100 rounded col-span-1 animate-pulse"></div>
-              </div>
-              <div className="h-px bg-border"></div>
-              {[1, 2, 3].map((n) => (
-                <div key={n} className="grid grid-cols-4 gap-4 py-2">
-                  <div className="h-4 bg-slate-50 rounded col-span-1 animate-pulse"></div>
-                  <div className="h-4 bg-slate-50 rounded col-span-1 animate-pulse"></div>
-                  <div className="h-4 bg-slate-50 rounded col-span-1 animate-pulse"></div>
-                  <div className="h-4 bg-slate-50 rounded col-span-1 animate-pulse"></div>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : societies.length === 0 ? (
-          <div className="bg-white rounded-xl border border-border p-12 text-center">
-            <svg className="w-12 h-12 text-slate/30 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-            </svg>
-            <h3 className="text-lg font-bold text-charcoal">No Societies Found</h3>
-            <p className="text-sm text-slate mt-1 max-w-sm mx-auto">Get started by adding your first residential society to register it on the platform.</p>
-            <button
-              onClick={handleOpenAddModal}
-              className="mt-4 bg-primary hover:bg-primary-light text-white font-medium px-4 py-2 rounded-lg transition-colors cursor-pointer inline-flex items-center space-x-1"
-            >
-              <span>Create Society</span>
-            </button>
-          </div>
-        ) : (
-          <>
-            {/* Desktop Table View */}
-            <div className="hidden md:block bg-white rounded-xl shadow-sm border border-border overflow-hidden">
-              <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-border sticky top-0 z-1">
-                      <th className="py-4 px-6 text-sm font-semibold text-charcoal">Society Name</th>
-                      <th className="py-4 px-6 text-sm font-semibold text-charcoal">Address</th>
-                      <th className="py-4 px-6 text-sm font-semibold text-charcoal">City</th>
-                      <th className="py-4 px-6 text-sm font-semibold text-charcoal">Registration No.</th>
-                      <th className="py-4 px-6 text-sm font-semibold text-charcoal text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {societies.map((society, index) => (
-                      <tr
-                        key={society._id}
-                        className={index % 2 === 1 ? 'bg-surface/30' : 'bg-white'}
-                      >
-                        <td className="py-4 px-6 text-base font-semibold text-charcoal">{society.name}</td>
-                        <td className="py-4 px-6 text-sm text-slate">{society.address}</td>
-                        <td className="py-4 px-6 text-sm text-slate">{society.city}</td>
-                        <td className="py-4 px-6 text-sm font-mono text-slate">
-                          {society.registrationNumber || <span className="italic text-slate/40">N/A</span>}
-                        </td>
-                        <td className="py-4 px-6 text-sm text-right space-x-3">
-                          <button
-                            onClick={() => handleOpenEditModal(society)}
-                            className="text-primary hover:text-primary-light font-medium cursor-pointer"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => handleOpenDeleteModal(society)}
-                            className="text-error hover:text-red-700 font-medium cursor-pointer"
-                          >
-                            Delete
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Mobile Card List View (<768px) */}
-            <div className="block md:hidden space-y-4">
-              {societies.map((society) => (
-                <div key={society._id} className="bg-white rounded-xl shadow-sm border border-border p-5 space-y-3">
-                  <div className="flex justify-between items-start">
-                    <h4 className="text-lg font-bold text-charcoal">{society.name}</h4>
-                    <span className="text-xs font-mono bg-slate-100 text-slate px-2 py-0.5 rounded">
-                      Reg: {society.registrationNumber || 'N/A'}
-                    </span>
-                  </div>
-                  <div className="text-sm text-slate space-y-1">
-                    <p><strong>Address:</strong> {society.address}</p>
-                    <p><strong>City:</strong> {society.city}</p>
-                  </div>
-                  <div className="h-px bg-border pt-1"></div>
-                  <div className="flex justify-end space-x-4 pt-1">
-                    <button
-                      onClick={() => handleOpenEditModal(society)}
-                      className="text-primary hover:text-primary-light font-medium text-sm cursor-pointer"
-                    >
-                      Edit Details
-                    </button>
-                    <button
-                      onClick={() => handleOpenDeleteModal(society)}
-                      className="text-error hover:text-red-700 font-medium text-sm cursor-pointer"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </>
         )}
       </div>
 
-      {/* Add / Edit Dialog Modal Overlay */}
-      {isFormModalOpen && (
-        <div className="fixed inset-0 bg-charcoal/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl shadow-lg border border-border w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="px-6 py-4 border-b border-border flex items-center justify-between">
-              <h3 className="text-xl font-bold text-charcoal">
-                {formMode === 'add' ? 'Add New Society' : 'Edit Society'}
-              </h3>
-              <button
-                onClick={() => setIsFormModalOpen(false)}
-                className="text-slate hover:text-charcoal cursor-pointer"
-              >
-                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+      {/* Save Success Alert */}
+      {saveSuccess && (
+        <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl flex items-center space-x-3 shadow-sm animate-fade-in">
+          <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+          <span className="text-sm font-semibold">{saveSuccess}</span>
+        </div>
+      )}
+
+      {/* Error Alert */}
+      {error && (
+        <div className="p-4 bg-red-50 border border-error/20 text-error rounded-xl flex items-center justify-between shadow-sm">
+          <div className="flex items-center space-x-2.5">
+            <AlertCircle className="w-5 h-5 shrink-0" />
+            <span className="text-sm font-medium">{error}</span>
+          </div>
+          <button
+            onClick={fetchSociety}
+            className="text-sm text-error underline hover:text-red-700 font-semibold cursor-pointer ml-3"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {/* Loading Skeleton */}
+      {loading ? (
+        <div className="space-y-6">
+          <div className="bg-white rounded-xl border border-border p-8 animate-pulse space-y-4">
+            <div className="h-8 bg-slate-100 rounded w-1/3"></div>
+            <div className="h-5 bg-slate-100 rounded w-1/2"></div>
+            <div className="h-20 bg-slate-50 rounded-xl mt-6"></div>
+          </div>
+          <div className="bg-white rounded-xl border border-border p-8 animate-pulse space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="h-16 bg-slate-50 rounded-lg"></div>
+              <div className="h-16 bg-slate-50 rounded-lg"></div>
+              <div className="h-16 bg-slate-50 rounded-lg"></div>
+              <div className="h-16 bg-slate-50 rounded-lg"></div>
             </div>
-
-            <form onSubmit={handleFormSubmit}>
-              <div className="p-6 space-y-4">
-                {formSubmitError && (
-                  <div className="p-3 bg-red-50 border border-error/20 text-error rounded-lg text-sm font-medium">
-                    {formSubmitError}
+          </div>
+        </div>
+      ) : society ? (
+        <div className="space-y-6">
+          {/* Prominent Society Code Card */}
+          <div className="bg-gradient-to-br from-[#0F172A] to-[#1E293B] rounded-2xl p-6 sm:p-8 text-white shadow-xl border border-slate-700/30">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+              <div className="space-y-2">
+                <div className="flex items-center space-x-2">
+                  <div className="p-2 bg-[#D4AF37]/15 rounded-lg text-[#D4AF37]">
+                    <Building2 className="w-5 h-5" />
                   </div>
-                )}
+                  <span className="text-xs font-bold text-[#D4AF37] tracking-wider uppercase">
+                    Resident Join Code
+                  </span>
+                </div>
+                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
+                  {society.name}
+                </h2>
+                <p className="text-xs sm:text-sm text-slate-300 max-w-xl">
+                  Share this code with your residents so they can join this society when registering on SocietyPro.
+                </p>
+              </div>
 
+              {/* Code Display and Copy Box */}
+              <div className="bg-white/10 backdrop-blur-xs border border-white/15 p-4 rounded-xl flex items-center justify-between sm:justify-start gap-4 shadow-inner">
                 <div>
-                  <label htmlFor="modal-name" className="block text-sm font-medium text-charcoal mb-1">
+                  <span className="text-[10px] font-bold text-slate-300 uppercase tracking-wider block">
+                    Society Code
+                  </span>
+                  <span className="font-mono text-2xl sm:text-3xl font-extrabold text-[#D4AF37] tracking-widest">
+                    {society.societyCode}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCopyCode}
+                  className="p-3 bg-[#D4AF37] hover:bg-[#bca030] text-[#0F172A] rounded-lg font-bold transition-all shadow-md active:scale-95 cursor-pointer flex items-center gap-1.5"
+                  title="Copy Society Code"
+                >
+                  {copied ? (
+                    <>
+                      <Check className="w-5 h-5" />
+                      <span className="text-xs font-bold">Copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-5 h-5" />
+                      <span className="text-xs font-bold">Copy</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Edit Form or Read-Only Profile View */}
+          {isEditing ? (
+            /* Edit Form */
+            <div className="bg-white rounded-2xl shadow-sm border border-border overflow-hidden">
+              <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex items-center justify-between">
+                <h3 className="text-lg font-bold text-charcoal">Edit Society Information</h3>
+                <span className="text-xs text-slate-500">Update society profile details</span>
+              </div>
+
+              <form onSubmit={handleSave} className="p-6 sm:p-8 space-y-6">
+                <div>
+                  <label htmlFor="name" className="block text-sm font-medium text-charcoal mb-1">
                     Society Name <span className="text-error">*</span>
                   </label>
                   <input
-                    id="modal-name"
+                    id="name"
                     type="text"
-                    placeholder="e.g. Dream Heights Cooperative Society"
+                    placeholder="e.g. Green Valley Housing Society"
                     value={formData.name}
                     onChange={(e) => {
                       setFormData({ ...formData, name: e.target.value });
                       if (formErrors.name) setFormErrors({ ...formErrors, name: '' });
                     }}
-                    className={`w-full h-11 px-3.5 py-2.5 bg-white border rounded-lg text-charcoal placeholder-slate/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors ${
+                    className={`w-full h-11 px-3.5 py-2.5 bg-white border rounded-lg text-charcoal placeholder-slate/40 focus:outline-none focus:ring-2 focus:ring-[#0F172A]/20 focus:border-[#0F172A] transition-colors ${
                       formErrors.name ? 'border-error' : 'border-border'
                     }`}
-                    disabled={formSubmitLoading}
+                    disabled={saveLoading}
                   />
                   {formErrors.name && (
                     <p className="mt-1 text-xs text-error font-medium">{formErrors.name}</p>
@@ -390,35 +326,35 @@ const SocietyManagement = () => {
                 </div>
 
                 <div>
-                  <label htmlFor="modal-address" className="block text-sm font-medium text-charcoal mb-1">
+                  <label htmlFor="address" className="block text-sm font-medium text-charcoal mb-1">
                     Address <span className="text-error">*</span>
                   </label>
                   <textarea
-                    id="modal-address"
+                    id="address"
                     rows="3"
-                    placeholder="Enter complete society street address"
+                    placeholder="e.g. 123 Main Road, Sector 4"
                     value={formData.address}
                     onChange={(e) => {
                       setFormData({ ...formData, address: e.target.value });
                       if (formErrors.address) setFormErrors({ ...formErrors, address: '' });
                     }}
-                    className={`w-full px-3.5 py-2.5 bg-white border rounded-lg text-charcoal placeholder-slate/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors ${
+                    className={`w-full px-3.5 py-2.5 bg-white border rounded-lg text-charcoal placeholder-slate/40 focus:outline-none focus:ring-2 focus:ring-[#0F172A]/20 focus:border-[#0F172A] transition-colors ${
                       formErrors.address ? 'border-error' : 'border-border'
                     }`}
-                    disabled={formSubmitLoading}
+                    disabled={saveLoading}
                   />
                   {formErrors.address && (
                     <p className="mt-1 text-xs text-error font-medium">{formErrors.address}</p>
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   <div>
-                    <label htmlFor="modal-city" className="block text-sm font-medium text-charcoal mb-1">
+                    <label htmlFor="city" className="block text-sm font-medium text-charcoal mb-1">
                       City <span className="text-error">*</span>
                     </label>
                     <input
-                      id="modal-city"
+                      id="city"
                       type="text"
                       placeholder="e.g. Mumbai"
                       value={formData.city}
@@ -426,10 +362,10 @@ const SocietyManagement = () => {
                         setFormData({ ...formData, city: e.target.value });
                         if (formErrors.city) setFormErrors({ ...formErrors, city: '' });
                       }}
-                      className={`w-full h-11 px-3.5 py-2.5 bg-white border rounded-lg text-charcoal placeholder-slate/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors ${
+                      className={`w-full h-11 px-3.5 py-2.5 bg-white border rounded-lg text-charcoal placeholder-slate/40 focus:outline-none focus:ring-2 focus:ring-[#0F172A]/20 focus:border-[#0F172A] transition-colors ${
                         formErrors.city ? 'border-error' : 'border-border'
                       }`}
-                      disabled={formSubmitLoading}
+                      disabled={saveLoading}
                     />
                     {formErrors.city && (
                       <p className="mt-1 text-xs text-error font-medium">{formErrors.city}</p>
@@ -437,105 +373,142 @@ const SocietyManagement = () => {
                   </div>
 
                   <div>
-                    <label htmlFor="modal-reg" className="block text-sm font-medium text-charcoal mb-1">
-                      Registration Number
+                    <label htmlFor="registrationNumber" className="block text-sm font-medium text-charcoal mb-1">
+                      Registration Number <span className="text-slate/60 text-xs font-normal">(Optional)</span>
                     </label>
                     <input
-                      id="modal-reg"
+                      id="registrationNumber"
                       type="text"
-                      placeholder="e.g. REG-109283-A"
+                      placeholder="e.g. GV2026001"
                       value={formData.registrationNumber}
                       onChange={(e) => setFormData({ ...formData, registrationNumber: e.target.value })}
-                      className="w-full h-11 px-3.5 py-2.5 bg-white border border-border rounded-lg text-charcoal placeholder-slate/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
-                      disabled={formSubmitLoading}
+                      className="w-full h-11 px-3.5 py-2.5 bg-white border border-border rounded-lg text-charcoal placeholder-slate/40 focus:outline-none focus:ring-2 focus:ring-[#0F172A]/20 focus:border-[#0F172A] transition-colors"
+                      disabled={saveLoading}
                     />
                   </div>
                 </div>
-              </div>
 
-              <div className="px-6 py-4 bg-slate-50 border-t border-border flex justify-end space-x-3">
-                <button
-                  type="button"
-                  onClick={() => setIsFormModalOpen(false)}
-                  className="bg-white border border-border text-charcoal hover:bg-slate-100 font-medium px-4 py-2.5 text-sm rounded-lg transition-colors cursor-pointer h-11"
-                  disabled={formSubmitLoading}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="bg-primary hover:bg-primary-light text-white font-medium px-5 py-2.5 text-sm rounded-lg transition-colors cursor-pointer h-11 flex items-center space-x-2"
-                  disabled={formSubmitLoading}
-                >
-                  {formSubmitLoading ? (
-                    <>
-                      <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                      </svg>
-                      <span>Saving...</span>
-                    </>
-                  ) : (
-                    <span>Save Changes</span>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Delete Confirmation Overlay Dialog */}
-      {isDeleteModalOpen && (
-        <div className="fixed inset-0 bg-charcoal/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
-          <div className="bg-white rounded-xl shadow-lg border border-border w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-150">
-            <div className="p-6">
-              <div className="flex items-center space-x-3 text-error mb-4">
-                <div className="p-2 bg-red-50 rounded-full">
-                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                  </svg>
+                {/* Form Actions */}
+                <div className="pt-4 border-t border-border flex justify-end space-x-3">
+                  <button
+                    type="button"
+                    onClick={handleCancelEdit}
+                    className="h-11 px-5 bg-white border border-border text-charcoal hover:bg-slate-50 font-medium text-sm rounded-lg transition-colors cursor-pointer"
+                    disabled={saveLoading}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="h-11 px-6 bg-[#0F172A] hover:bg-[#1E293B] text-[#D4AF37] border border-[#D4AF37]/30 font-semibold text-sm rounded-lg transition-colors cursor-pointer flex items-center space-x-2 shadow-md active:scale-98"
+                    disabled={saveLoading}
+                  >
+                    {saveLoading ? (
+                      <>
+                        <svg className="animate-spin h-4 w-4 text-[#D4AF37]" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        <span>Saving...</span>
+                      </>
+                    ) : (
+                      <span>Save Changes</span>
+                    )}
+                  </button>
                 </div>
-                <h3 className="text-lg font-bold text-charcoal">Delete Society</h3>
+              </form>
+            </div>
+          ) : (
+            /* Read-Only Details Grid View */
+            <div className="bg-white rounded-2xl shadow-sm border border-border p-6 sm:p-8 space-y-6">
+              <div className="flex items-center justify-between border-b border-border pb-4">
+                <h3 className="text-lg font-bold text-charcoal">Society Details</h3>
+                <span className="text-xs text-slate-500">
+                  Registered on {society.createdAt ? new Date(society.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : 'N/A'}
+                </span>
               </div>
-              
-              <p className="text-slate text-sm leading-relaxed">
-                Are you sure you want to delete <strong className="text-charcoal">"{societyToDelete?.name}"</strong>? This action cannot be undone. All data associated with this society will be permanently removed.
-              </p>
-            </div>
 
-            <div className="px-6 py-4 bg-slate-50 border-t border-border flex justify-end space-x-3">
-              <button
-                type="button"
-                onClick={() => setIsDeleteModalOpen(false)}
-                className="bg-white border border-border text-charcoal hover:bg-slate-100 font-medium px-4 py-2.5 text-sm rounded-lg transition-colors cursor-pointer h-11"
-                disabled={deleteLoading}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleDeleteConfirm}
-                className="bg-error hover:bg-red-700 text-white font-medium px-5 py-2.5 text-sm rounded-lg transition-colors cursor-pointer h-11 flex items-center space-x-2"
-                disabled={deleteLoading}
-              >
-                {deleteLoading ? (
-                  <>
-                    <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                    <span>Deleting...</span>
-                  </>
-                ) : (
-                  <span>Yes, Delete</span>
-                )}
-              </button>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                {/* Society Name */}
+                <div className="p-4 rounded-xl bg-slate-50/70 border border-slate-100 flex items-start space-x-3.5">
+                  <div className="p-2.5 bg-white rounded-lg text-primary border border-border shadow-2xs">
+                    <Building2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
+                      Society Name
+                    </span>
+                    <p className="text-base font-bold text-charcoal mt-0.5">
+                      {society.name}
+                    </p>
+                  </div>
+                </div>
+
+                {/* City */}
+                <div className="p-4 rounded-xl bg-slate-50/70 border border-slate-100 flex items-start space-x-3.5">
+                  <div className="p-2.5 bg-white rounded-lg text-primary border border-border shadow-2xs">
+                    <MapPin className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
+                      City / Location
+                    </span>
+                    <p className="text-base font-bold text-charcoal mt-0.5">
+                      {society.city}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Address */}
+                <div className="p-4 rounded-xl bg-slate-50/70 border border-slate-100 flex items-start space-x-3.5 sm:col-span-2">
+                  <div className="p-2.5 bg-white rounded-lg text-primary border border-border shadow-2xs">
+                    <MapPin className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
+                      Full Address
+                    </span>
+                    <p className="text-base font-medium text-charcoal mt-0.5">
+                      {society.address}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Registration Number */}
+                <div className="p-4 rounded-xl bg-slate-50/70 border border-slate-100 flex items-start space-x-3.5">
+                  <div className="p-2.5 bg-white rounded-lg text-primary border border-border shadow-2xs">
+                    <FileText className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
+                      Govt. Registration Number
+                    </span>
+                    <p className="text-base font-mono font-medium text-charcoal mt-0.5">
+                      {society.registrationNumber || <span className="italic text-slate-400 font-sans">Not Specified</span>}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Created Date */}
+                <div className="p-4 rounded-xl bg-slate-50/70 border border-slate-100 flex items-start space-x-3.5">
+                  <div className="p-2.5 bg-white rounded-lg text-primary border border-border shadow-2xs">
+                    <Calendar className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
+                      Account Created
+                    </span>
+                    <p className="text-base font-medium text-charcoal mt-0.5">
+                      {society.createdAt ? new Date(society.createdAt).toLocaleDateString() : 'N/A'}
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
-          </div>
+          )}
         </div>
-      )}
-    </>
+      ) : null}
+    </div>
   );
 };
 

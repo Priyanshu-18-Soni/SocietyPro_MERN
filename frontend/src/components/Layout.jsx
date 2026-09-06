@@ -33,12 +33,11 @@ const Layout = ({ children }) => {
       visible: true
     },
     {
-      name: 'Societies',
+      name: 'My Society',
       path: '/societies',
       icon: Building,
       disabled: false,
-      // Only SuperAdmin manages societies
-      visible: user?.role === 'SuperAdmin'
+      visible: user?.role === 'SocietyOwner' || user?.role === 'Committee'
     },
     {
       name: 'Residents',
@@ -67,6 +66,10 @@ const Layout = ({ children }) => {
   // Helper to format role names for the badge
   const getRoleBadgeStyle = (role) => {
     switch (role) {
+      case 'SocietyOwner':
+        return 'bg-amber-50 text-[#bca030] border-amber-200';
+      case 'Committee':
+        return 'bg-purple-50 text-purple-700 border-purple-200';
       case 'SuperAdmin':
         return 'bg-red-50 text-error border-error/20';
       case 'SocietyAdmin':

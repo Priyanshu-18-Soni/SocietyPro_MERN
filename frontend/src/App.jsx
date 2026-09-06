@@ -31,11 +31,11 @@ function App() {
             }
           />
 
-          {/* Protected Society Management Route (SuperAdmin only) */}
+          {/* Protected Society Profile Route (SocietyOwner and Committee) */}
           <Route
             path="/societies"
             element={
-              <ProtectedRoute allowedRoles={['SuperAdmin']}>
+              <ProtectedRoute allowedRoles={['SocietyOwner', 'Committee']}>
                 <Layout>
                   <SocietyManagement />
                 </Layout>
