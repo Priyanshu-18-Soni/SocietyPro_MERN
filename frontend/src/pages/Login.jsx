@@ -45,7 +45,7 @@ const Login = () => {
       login(token, user);
       
       // Redirect based on role or home
-      if (['SuperAdmin', 'SocietyAdmin', 'Resident'].includes(user.role)) {
+      if (['SocietyOwner', 'Committee', 'Resident'].includes(user.role)) {
         navigate('/');
       } else {
         setApiError('Access restricted. Unauthorized role.');
@@ -175,9 +175,9 @@ const Login = () => {
 
           {/* Two Clickable Registration Option Cards */}
           <div className="space-y-3">
-            {/* Register as Admin Card */}
+            {/* Register as Society Owner Card */}
             <div
-              onClick={() => navigate('/register?role=admin')}
+              onClick={() => navigate('/register?role=owner')}
               className="group flex items-center justify-between p-4 bg-slate-50/50 hover:bg-[#D4AF37]/5 border border-slate-100 hover:border-[#D4AF37]/20 rounded-xl cursor-pointer transition-all duration-200 shadow-sm hover:shadow-md"
             >
               <div className="flex items-center space-x-3.5">
@@ -186,7 +186,7 @@ const Login = () => {
                 </div>
                 <div className="text-left">
                   <h4 className="text-sm font-bold text-slate-800 group-hover:text-[#bca030] transition-colors">
-                    Register as Admin
+                    Register as Society Owner
                   </h4>
                   <p className="text-xs text-slate-500 font-medium mt-0.5">
                     I am a society chairperson / owner
@@ -216,7 +216,7 @@ const Login = () => {
                     I live in a society
                   </p>
                   <p className="text-[11px] text-slate-400 font-medium">
-                    I have a join code from my admin
+                    I have a join code from my Society Owner
                   </p>
                 </div>
               </div>

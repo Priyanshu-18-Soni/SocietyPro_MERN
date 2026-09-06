@@ -36,6 +36,9 @@ export const AuthProvider = ({ children }) => {
         login,
         logout,
         isAuthenticated: !!token,
+        isSocietyOwner: user?.role === 'SocietyOwner',
+        isCommittee: user?.role === 'Committee',
+        isResident: user?.role === 'Resident',
         isSuperAdmin: user?.role === 'SuperAdmin',
       }}
     >
