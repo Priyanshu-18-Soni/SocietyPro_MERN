@@ -26,6 +26,14 @@ const societySchema = new mongoose.Schema({
     ref: 'User',
     required: true,
   },
+  defaultRateItems: {
+    type: [{
+      name: { type: String, required: true },
+      amount: { type: Number, required: true },
+      gstApplicable: { type: Boolean, default: false },
+    }],
+    default: [],
+  },
   createdAt: {
     type: Date,
     default: Date.now,

@@ -2,11 +2,18 @@ const express = require('express');
 const router = express.Router();
 const tenantMiddleware = require('../middleware/tenantMiddleware');
 const requirePermission = require('../middleware/requirePermission');
+const requireRole = require('../middleware/roleMiddleware');
 const {
   getSocietyById,
   updateSociety,
   deleteSociety,
+  updateDefaultRates,
+  getDefaultRates,
 } = require('../controllers/societyController');
+
+// Rate item routes
+router.get('/rates/default', tenantMiddleware, getDefaultRates);
+router.patch('/rates/default', tenantMiddleware, requireRole('SocietyOwner'), updateDefaultRates);
 
 // GET a single society by ID - SocietyOwner can view their own society
 router.get('/:id', tenantMiddleware, requirePermission('manageSociety'), getSocietyById);
