@@ -7,7 +7,13 @@ const {
   getUserById,
   updateUser,
   deleteUser,
+  setResidentCustomRate,
+  getResidentRate,
 } = require('../controllers/userController');
+
+// Rate routes
+router.patch('/:id/rate', tenantMiddleware, requirePermission('manageResidents'), setResidentCustomRate);
+router.get('/:id/rate', tenantMiddleware, getResidentRate);
 
 router.get('/', tenantMiddleware, requirePermission('manageResidents'), getSocietyUsers);
 router.get('/:id', tenantMiddleware, requirePermission('manageResidents'), getUserById);

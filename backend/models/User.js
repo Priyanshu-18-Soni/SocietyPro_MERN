@@ -36,6 +36,18 @@ const userSchema = new mongoose.Schema({
   unitNumber: {
     type: String,
   },
+  customRateItems: {
+    type: [{
+      name: { type: String, required: true },
+      amount: { type: Number, required: true },
+      gstApplicable: { type: Boolean, default: false },
+    }],
+    default: [],
+  },
+  usingCustomRate: {
+    type: Boolean,
+    default: false,
+  },
   createdAt: {
     type: Date,
     default: Date.now,
