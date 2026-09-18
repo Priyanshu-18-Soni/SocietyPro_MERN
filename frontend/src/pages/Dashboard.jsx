@@ -306,8 +306,10 @@ const Dashboard = () => {
   // Dispatch based on user role
   if (user?.role === 'SuperAdmin') {
     return renderSuperAdminDashboard();
-  } else if (user?.role === 'SocietyAdmin') {
+  } else if (user?.role === 'SocietyOwner' || user?.role === 'Committee' || user?.role === 'SocietyAdmin') {
     return renderSocietyAdminDashboard();
+  } else if (user?.role === 'Resident') {
+    return renderResidentDashboard();
   } else {
     return renderResidentDashboard();
   }

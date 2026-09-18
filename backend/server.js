@@ -12,11 +12,20 @@ const societyRoutes = require('./routes/societyRoutes');
 const userRoutes = require('./routes/userRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 const committeeRoutes = require('./routes/committeeRoutes');
+const complaintRoutes = require('./routes/complaintRoutes');
+const noticeRoutes = require('./routes/noticeRoutes');
+const financeRoutes = require('./routes/financeRoutes');
 
 const app = express();
 
 app.use(cors());
-app.use(express.json());
+app.use(
+  express.json({
+    verify: (req, res, buf) => {
+      req.rawBody = buf;
+    },
+  })
+);
 
 // Auth routes
 app.use('/api/auth', authRoutes);
@@ -35,6 +44,15 @@ app.use('/api/payments', paymentRoutes);
 
 // Committee routes
 app.use('/api/committee', committeeRoutes);
+
+// Grievance Redressal (Complaints) routes
+app.use('/api/complaints', complaintRoutes);
+
+// Notice Board routes
+app.use('/api/notices', noticeRoutes);
+
+// Treasury & Finance Ledger routes
+app.use('/api/finances', financeRoutes);
 
 // Test route
 app.get('/', (req, res) => {

@@ -9,11 +9,17 @@ const {
   deleteSociety,
   updateDefaultRates,
   getDefaultRates,
+  updateLateFeeSettings,
+  getLateFeeSettings,
 } = require('../controllers/societyController');
 
 // Rate item routes
 router.get('/rates/default', tenantMiddleware, getDefaultRates);
 router.patch('/rates/default', tenantMiddleware, requireRole('SocietyOwner'), updateDefaultRates);
+
+// Late fee settings routes
+router.get('/late-fee-settings', tenantMiddleware, getLateFeeSettings);
+router.patch('/late-fee-settings', tenantMiddleware, requireRole('SocietyOwner'), updateLateFeeSettings);
 
 // GET a single society by ID - SocietyOwner can view their own society
 router.get('/:id', tenantMiddleware, requirePermission('manageSociety'), getSocietyById);

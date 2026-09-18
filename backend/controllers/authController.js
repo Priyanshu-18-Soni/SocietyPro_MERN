@@ -40,10 +40,11 @@ const registerOwner = async (req, res) => {
       passwordHash,
       role: 'SocietyOwner',
       societyId: society._id,
+      status: 'active',
     });
 
     const token = jwt.sign(
-      { id: user._id, role: user.role, societyId: user.societyId, permissions: user.permissions },
+      { id: user._id, role: user.role, societyId: user.societyId, permissions: user.permissions, status: user.status },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -57,6 +58,7 @@ const registerOwner = async (req, res) => {
         email: user.email,
         role: user.role,
         societyId: user.societyId,
+        status: user.status,
       },
       society: {
         id: society._id,
@@ -98,10 +100,18 @@ const registerResident = async (req, res) => {
       role: 'Resident',
       societyId: society._id,
       unitNumber: unitNumber || '',
+      status: 'pending',
     });
 
     const token = jwt.sign(
-      { id: newUser._id, role: newUser.role, societyId: newUser.societyId, permissions: newUser.permissions },
+      { 
+        id: newUser._id, 
+        role: newUser.role, 
+        societyId: newUser.societyId, 
+        permissions: newUser.permissions, 
+        status: newUser.status,
+        unitNumber: newUser.unitNumber 
+      },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -115,6 +125,8 @@ const registerResident = async (req, res) => {
         email: newUser.email,
         role: newUser.role,
         societyId: newUser.societyId,
+        unitNumber: newUser.unitNumber,
+        status: newUser.status,
       },
     });
   } catch (err) {
@@ -142,7 +154,14 @@ const loginUser = async (req, res) => {
     }
 
     const token = jwt.sign(
-      { id: user._id, role: user.role, societyId: user.societyId, permissions: user.permissions },
+      { 
+        id: user._id, 
+        role: user.role, 
+        societyId: user.societyId, 
+        permissions: user.permissions, 
+        status: user.status,
+        unitNumber: user.unitNumber 
+      },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -156,6 +175,8 @@ const loginUser = async (req, res) => {
         email: user.email,
         role: user.role,
         societyId: user.societyId,
+        unitNumber: user.unitNumber,
+        status: user.status,
       },
     });
   } catch (err) {

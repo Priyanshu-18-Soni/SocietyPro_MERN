@@ -3,7 +3,10 @@ const router = express.Router();
 const tenantMiddleware = require('../middleware/tenantMiddleware');
 const requirePermission = require('../middleware/requirePermission');
 const requireRole = require('../middleware/roleMiddleware');
-const { createOrder, verifyPayment, generateBill, getBills } = require('../controllers/paymentController');
+const { createOrder, verifyPayment, generateBill, getBills, handleRazorpayWebhook } = require('../controllers/paymentController');
+
+// Razorpay asynchronous webhook endpoint (no JWT required)
+router.post('/webhook', handleRazorpayWebhook);
 
 // Residents can create payment orders for their own bills
 router.post('/create-order', tenantMiddleware, requireRole('Resident'), createOrder);

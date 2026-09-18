@@ -1,0 +1,64 @@
+const mongoose = require('mongoose');
+
+const ledgerSchema = new mongoose.Schema(
+  {
+    societyId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Society',
+      required: true,
+      index: true,
+    },
+    type: {
+      type: String,
+      enum: ['income', 'expense'],
+      required: true,
+      index: true,
+    },
+    category: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    amountInPaise: {
+      type: Number,
+      required: true,
+      min: 1,
+    },
+    paymentMethod: {
+      type: String,
+      enum: ['razorpay', 'cash', 'cheque', 'bank_transfer'],
+      required: true,
+    },
+    referenceBillId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Payment',
+      default: null,
+    },
+    description: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    date: {
+      type: Date,
+      default: Date.now,
+    },
+    recordedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+    },
+  },
+  {
+    timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
+  }
+);
+
+// Virtual getter to convert integer Paise to Rupees for client views
+ledgerSchema.virtual('amountInRupees').get(function () {
+  return this.amountInPaise / 100;
+});
+
+module.exports = mongoose.model('Ledger', ledgerSchema);

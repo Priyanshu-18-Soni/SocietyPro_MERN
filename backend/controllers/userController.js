@@ -15,14 +15,10 @@ const getSocietyUsers = async (req, res) => {
 // Get a single user by ID (must belong to the requester's own society)
 const getUserById = async (req, res) => {
   try {
-    const user = await User.findById(req.params.id).select('-passwordHash');
+    const user = await User.findOne({ _id: req.params.id, societyId: req.user.societyId }).select('-passwordHash');
 
     if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    if (String(user.societyId) !== String(req.user.societyId)) {
-      return res.status(403).json({ message: 'Access denied to this user' });
+      return res.status(404).json({ message: 'Resource not found' });
     }
 
     res.status(200).json({ user });
@@ -35,14 +31,10 @@ const getUserById = async (req, res) => {
 // Update a user's details (must belong to the requester's own society)
 const updateUser = async (req, res) => {
   try {
-    const user = await User.findById(req.params.id);
+    const user = await User.findOne({ _id: req.params.id, societyId: req.user.societyId });
 
     if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    if (String(user.societyId) !== String(req.user.societyId)) {
-      return res.status(403).json({ message: 'Access denied to this user' });
+      return res.status(404).json({ message: 'Resource not found' });
     }
 
     const { name, unitNumber } = req.body;
@@ -61,14 +53,10 @@ const updateUser = async (req, res) => {
 // Delete/remove a user (must belong to the requester's own society)
 const deleteUser = async (req, res) => {
   try {
-    const user = await User.findById(req.params.id);
+    const user = await User.findOne({ _id: req.params.id, societyId: req.user.societyId });
 
     if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    if (String(user.societyId) !== String(req.user.societyId)) {
-      return res.status(403).json({ message: 'Access denied to this user' });
+      return res.status(404).json({ message: 'Resource not found' });
     }
 
     await user.deleteOne();
@@ -89,13 +77,9 @@ const setResidentCustomRate = async (req, res) => {
       return res.status(400).json({ message: 'rateItems must be an array' });
     }
 
-    const user = await User.findById(req.params.id);
+    const user = await User.findOne({ _id: req.params.id, societyId: req.user.societyId });
     if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    if (String(user.societyId) !== String(req.user.societyId)) {
-      return res.status(403).json({ message: 'Access denied to this user' });
+      return res.status(404).json({ message: 'Resource not found' });
     }
 
     if (user.role !== 'Resident') {
@@ -154,13 +138,9 @@ const setResidentCustomRate = async (req, res) => {
 // Get the effective rate for a specific resident - manageResidents access or the resident themselves
 const getResidentRate = async (req, res) => {
   try {
-    const resident = await User.findById(req.params.id);
+    const resident = await User.findOne({ _id: req.params.id, societyId: req.user.societyId });
     if (!resident) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    if (String(resident.societyId) !== String(req.user.societyId)) {
-      return res.status(403).json({ message: 'Access denied. Different society.' });
+      return res.status(404).json({ message: 'Resource not found' });
     }
 
     const isOwner = req.user.role === 'SocietyOwner';
@@ -192,6 +172,62 @@ const getResidentRate = async (req, res) => {
   }
 };
 
+// Get all pending resident registrations for the tenant
+const getPendingResidents = async (req, res) => {
+  try {
+    const pendingResidents = await User.find({
+      societyId: req.user.societyId,
+      role: 'Resident',
+      status: 'pending',
+    }).select('-passwordHash').sort({ createdAt: -1 });
+
+    res.status(200).json({ pendingResidents });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error while fetching pending residents' });
+  }
+};
+
+// Approve a pending resident
+const approveResident = async (req, res) => {
+  try {
+    const resident = await User.findOneAndUpdate(
+      { _id: req.params.id, societyId: req.user.societyId, role: 'Resident' },
+      { status: 'active' },
+      { returnDocument: 'after' }
+    ).select('-passwordHash');
+
+    if (!resident) {
+      return res.status(404).json({ message: 'Resource not found' });
+    }
+
+    res.status(200).json({ message: 'Resident approved successfully', resident });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error while approving resident' });
+  }
+};
+
+// Reject a pending resident
+const rejectResident = async (req, res) => {
+  try {
+    const resident = await User.findOneAndUpdate(
+      { _id: req.params.id, societyId: req.user.societyId, role: 'Resident' },
+      { status: 'rejected' },
+      { returnDocument: 'after' }
+    ).select('-passwordHash');
+
+    if (!resident) {
+      return res.status(404).json({ message: 'Resource not found' });
+    }
+
+    res.status(200).json({ message: 'Resident rejected successfully', resident });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error while rejecting resident' });
+  }
+};
+
 module.exports = {
   getSocietyUsers,
   getUserById,
@@ -199,4 +235,7 @@ module.exports = {
   deleteUser,
   setResidentCustomRate,
   getResidentRate,
+  getPendingResidents,
+  approveResident,
+  rejectResident,
 };

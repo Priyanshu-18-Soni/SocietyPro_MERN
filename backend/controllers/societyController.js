@@ -156,10 +156,118 @@ const getDefaultRates = async (req, res) => {
   }
 };
 
+// Update late fee settings for the society - SocietyOwner only
+const updateLateFeeSettings = async (req, res) => {
+  try {
+    const { ratePercentPerYear, gracePeriodDays, dueDateDay } = req.body;
+
+    if (
+      ratePercentPerYear !== undefined &&
+      (typeof ratePercentPerYear !== 'number' ||
+        isNaN(ratePercentPerYear) ||
+        ratePercentPerYear <= 0 ||
+        ratePercentPerYear > 100)
+    ) {
+      return res.status(400).json({
+        message: 'ratePercentPerYear must be a positive number between 0 and 100',
+      });
+    }
+
+    if (
+      gracePeriodDays !== undefined &&
+      (typeof gracePeriodDays !== 'number' ||
+        !Number.isInteger(gracePeriodDays) ||
+        gracePeriodDays < 0)
+    ) {
+      return res.status(400).json({
+        message: 'gracePeriodDays must be a non-negative integer',
+      });
+    }
+
+    if (
+      dueDateDay !== undefined &&
+      (typeof dueDateDay !== 'number' ||
+        !Number.isInteger(dueDateDay) ||
+        dueDateDay < 1 ||
+        dueDateDay > 28)
+    ) {
+      return res.status(400).json({
+        message: 'dueDateDay must be an integer between 1 and 28',
+      });
+    }
+
+    if (
+      ratePercentPerYear === undefined &&
+      gracePeriodDays === undefined &&
+      dueDateDay === undefined
+    ) {
+      return res.status(400).json({
+        message: 'At least one late fee setting must be provided',
+      });
+    }
+
+    const society = await Society.findById(req.user.societyId);
+    if (!society) {
+      return res.status(404).json({ message: 'Society not found' });
+    }
+
+    if (!society.lateFeeSettings) {
+      society.lateFeeSettings = {
+        ratePercentPerYear: 21,
+        gracePeriodDays: 5,
+        dueDateDay: 10,
+      };
+    }
+
+    if (ratePercentPerYear !== undefined) {
+      society.lateFeeSettings.ratePercentPerYear = ratePercentPerYear;
+    }
+    if (gracePeriodDays !== undefined) {
+      society.lateFeeSettings.gracePeriodDays = gracePeriodDays;
+    }
+    if (dueDateDay !== undefined) {
+      society.lateFeeSettings.dueDateDay = dueDateDay;
+    }
+
+    await society.save();
+
+    res.status(200).json({
+      message: 'Late payment settings updated successfully',
+      lateFeeSettings: society.lateFeeSettings,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error while updating late fee settings' });
+  }
+};
+
+// Get late fee settings for the society - Accessible to any authenticated user in the society
+const getLateFeeSettings = async (req, res) => {
+  try {
+    const society = await Society.findById(req.user.societyId);
+    if (!society) {
+      return res.status(404).json({ message: 'Society not found' });
+    }
+
+    const lateFeeSettings = society.lateFeeSettings || {
+      ratePercentPerYear: 21,
+      gracePeriodDays: 5,
+      dueDateDay: 10,
+    };
+
+    res.status(200).json({ lateFeeSettings });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error while fetching late fee settings' });
+  }
+};
+
 module.exports = {
   getSocietyById,
   updateSociety,
   deleteSociety,
   updateDefaultRates,
   getDefaultRates,
+  updateLateFeeSettings,
+  getLateFeeSettings,
 };

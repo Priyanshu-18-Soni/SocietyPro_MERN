@@ -68,7 +68,7 @@ const ResidentManagement = () => {
 
   // Calculate statistics
   const totalResidentsCount = users.filter(u => u.role === 'Resident').length;
-  const totalAdminsCount = users.filter(u => u.role === 'SocietyAdmin').length;
+  const totalAdminsCount = users.filter(u => u.role === 'SocietyOwner' || u.role === 'Committee').length;
   const assignedUnitsCount = users.filter(u => u.unitNumber && u.unitNumber.trim() !== '').length;
 
   // Open Edit Modal
@@ -163,13 +163,13 @@ const ResidentManagement = () => {
           </div>
         </div>
 
-        {/* Society Admins Card */}
+        {/* Society Admins / Committee Card */}
         <div className="bg-white rounded-xl shadow-sm border border-border p-6 flex items-center space-x-4">
           <div className="p-3.5 rounded-lg bg-emerald-50 text-success">
             <Shield className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-sm font-medium text-slate">Society Admins</p>
+            <p className="text-sm font-medium text-slate">Admins & Committee</p>
             <h3 className="text-2xl font-bold text-charcoal">{loading ? '...' : totalAdminsCount}</h3>
           </div>
         </div>
@@ -272,7 +272,7 @@ const ResidentManagement = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in duration-300">
           {filteredUsers.map((resident) => {
             const initial = resident.name ? resident.name.charAt(0).toUpperCase() : '?';
-            const isAdmin = resident.role === 'SocietyAdmin';
+            const isAdmin = resident.role === 'SocietyOwner' || resident.role === 'Committee';
             
             return (
               <div 
@@ -298,7 +298,7 @@ const ResidentManagement = () => {
                             ? 'bg-emerald-50 text-success border-success/20' 
                             : 'bg-blue-50 text-info border-info/20'
                         }`}>
-                          {resident.role === 'SocietyAdmin' ? 'Admin' : 'Resident'}
+                          {isAdmin ? (resident.role === 'SocietyOwner' ? 'Owner' : 'Committee') : 'Resident'}
                         </span>
                       </div>
                     </div>

@@ -52,7 +52,7 @@ const Layout = ({ children }) => {
       path: '/residents',
       icon: Users,
       disabled: false,
-      visible: user?.role === 'SocietyAdmin'
+      visible: user?.role === 'SocietyOwner' || user?.role === 'Committee'
     },
     {
       name: 'Payments',

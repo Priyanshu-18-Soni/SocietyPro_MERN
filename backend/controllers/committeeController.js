@@ -74,15 +74,10 @@ const updateCommitteePermissions = async (req, res) => {
     const { id } = req.params;
     const { customLabel, permissions } = req.body;
 
-    // Find the User by id
-    const user = await User.findById(id);
+    // Find the User by id and societyId (atomic tenant isolation)
+    const user = await User.findOne({ _id: id, societyId: req.user.societyId });
     if (!user) {
-      return res.status(404).json({ message: 'Committee member not found' });
-    }
-
-    // Verify this user's societyId matches req.user.societyId (tenant isolation)
-    if (user.societyId.toString() !== req.user.societyId.toString()) {
-      return res.status(403).json({ message: 'Access denied: Cannot modify committee member from another society' });
+      return res.status(404).json({ message: 'Resource not found' });
     }
 
     // Verify this user's role is actually 'Committee'
@@ -125,15 +120,10 @@ const deleteCommittee = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Find the User by id
-    const user = await User.findById(id);
+    // Find the User by id and societyId (atomic tenant isolation)
+    const user = await User.findOne({ _id: id, societyId: req.user.societyId });
     if (!user) {
-      return res.status(404).json({ message: 'Committee member not found' });
-    }
-
-    // Verify societyId matches req.user.societyId
-    if (user.societyId.toString() !== req.user.societyId.toString()) {
-      return res.status(403).json({ message: 'Access denied: Cannot delete committee member from another society' });
+      return res.status(404).json({ message: 'Resource not found' });
     }
 
     // Verify role is 'Committee'
@@ -142,7 +132,7 @@ const deleteCommittee = async (req, res) => {
     }
 
     // Delete the user
-    await User.findByIdAndDelete(id);
+    await user.deleteOne();
 
     res.status(200).json({ message: 'Committee member removed successfully' });
   } catch (err) {

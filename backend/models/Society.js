@@ -34,6 +34,11 @@ const societySchema = new mongoose.Schema({
     }],
     default: [],
   },
+  lateFeeSettings: {
+    ratePercentPerYear: { type: Number, default: 21 },
+    gracePeriodDays: { type: Number, default: 5 },
+    dueDateDay: { type: Number, default: 10 },
+  },
   createdAt: {
     type: Date,
     default: Date.now,

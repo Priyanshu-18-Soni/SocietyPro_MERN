@@ -9,7 +9,15 @@ const {
   deleteUser,
   setResidentCustomRate,
   getResidentRate,
+  getPendingResidents,
+  approveResident,
+  rejectResident,
 } = require('../controllers/userController');
+
+// Resident moderation routes (placed before /:id routes)
+router.get('/residents/pending', tenantMiddleware, requirePermission('manageResidents'), getPendingResidents);
+router.patch('/residents/:id/approve', tenantMiddleware, requirePermission('manageResidents'), approveResident);
+router.patch('/residents/:id/reject', tenantMiddleware, requirePermission('manageResidents'), rejectResident);
 
 // Rate routes
 router.patch('/:id/rate', tenantMiddleware, requirePermission('manageResidents'), setResidentCustomRate);

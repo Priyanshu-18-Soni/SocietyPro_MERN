@@ -56,11 +56,11 @@ function App() {
             }
           />
 
-          {/* Protected Resident Management Route (SocietyAdmin only) */}
+          {/* Protected Resident Management Route (SocietyOwner and Committee) */}
           <Route
             path="/residents"
             element={
-              <ProtectedRoute allowedRoles={['SocietyAdmin']}>
+              <ProtectedRoute allowedRoles={['SocietyOwner', 'Committee']}>
                 <Layout>
                   <ResidentManagement />
                 </Layout>

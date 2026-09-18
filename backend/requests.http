@@ -177,3 +177,130 @@ Authorization: Bearer {{token}}
 # Delete a committee member
 DELETE {{baseUrl}}/api/committee/{{committeeId}}
 Authorization: Bearer {{token}}
+
+### =======================================================
+### Gatekeeper Lifecycle & Resident Moderation
+### =======================================================
+
+### Get pending residents awaiting approval (SocietyOwner or Committee with manageResidents)
+GET {{baseUrl}}/api/users/residents/pending
+Authorization: Bearer {{token}}
+
+### Approve a pending resident
+PATCH {{baseUrl}}/api/users/residents/{{userId}}/approve
+Authorization: Bearer {{token}}
+
+### Reject a pending resident
+PATCH {{baseUrl}}/api/users/residents/{{userId}}/reject
+Authorization: Bearer {{token}}
+
+### =======================================================
+### Grievance Redressal Engine (Complaints)
+### =======================================================
+
+### Create a new complaint ticket (Active Resident / Committee / Owner)
+POST {{baseUrl}}/api/complaints
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "title": "Water leakage in lobby pipe",
+  "description": "Pipe leaking on ground floor lobby near elevator B",
+  "imageUrl": "https://example.com/leakage.jpg"
+}
+
+### List all complaints in society (optional filter: ?status=open)
+GET {{baseUrl}}/api/complaints?status=open
+Authorization: Bearer {{token}}
+
+### Upvote a complaint (adds current resident flat to affectedFlats)
+PATCH {{baseUrl}}/api/complaints/{{complaintId}}/upvote
+Authorization: Bearer {{token}}
+
+### Update complaint status (Owner or Committee with resolveComplaints)
+PATCH {{baseUrl}}/api/complaints/{{complaintId}}/status
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "status": "in_progress"
+}
+
+### Submit verdict for complaint (Ticket creator only)
+PATCH {{baseUrl}}/api/complaints/{{complaintId}}/verdict
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "verdict": "confirmed"
+}
+
+### =======================================================
+### Notice Board Engine
+### =======================================================
+
+### Get all notices for society (sorted by priority & date)
+GET {{baseUrl}}/api/notices
+Authorization: Bearer {{token}}
+
+### Create a notice (Owner or Committee with manageNotices)
+POST {{baseUrl}}/api/notices
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "title": "Annual General Meeting 2026",
+  "body": "The AGM will be held this Sunday at 10:00 AM in the clubhouse.",
+  "isPriority": true
+}
+
+### Toggle pin/unpin for a notice
+PATCH {{baseUrl}}/api/notices/{{noticeId}}/pin
+Authorization: Bearer {{token}}
+
+### Delete a notice (Owner or Committee with manageNotices)
+DELETE {{baseUrl}}/api/notices/{{noticeId}}
+Authorization: Bearer {{token}}
+
+### =======================================================
+### Treasury Ledger & Finances
+### =======================================================
+
+### Record a manual expense (Owner or Committee with manageBills)
+POST {{baseUrl}}/api/finances/expenses
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "category": "Gardening & Landscaping",
+  "amount": 2500,
+  "paymentMethod": "bank_transfer",
+  "description": "Monthly gardener contractor payment"
+}
+
+### Get financial metrics & ledger transaction history
+GET {{baseUrl}}/api/finances/metrics
+Authorization: Bearer {{token}}
+
+### =======================================================
+### Razorpay Webhook Simulation
+### =======================================================
+
+### Razorpay Webhook listener (Requires x-razorpay-signature header with HMAC-SHA256)
+POST {{baseUrl}}/api/payments/webhook
+Content-Type: application/json
+x-razorpay-signature: hex_digest_signature_here
+
+{
+  "event": "payment.captured",
+  "payload": {
+    "payment": {
+      "entity": {
+        "id": "pay_test123456",
+        "order_id": "order_test123456",
+        "amount": 150000,
+        "status": "captured"
+      }
+    }
+  }
+}

@@ -20,6 +20,12 @@ const userSchema = new mongoose.Schema({
     enum: ['SocietyOwner', 'Committee', 'Resident'],
     required: true,
   },
+  status: {
+    type: String,
+    enum: ['pending', 'active', 'rejected'],
+    default: 'active',
+    index: true,
+  },
   societyId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Society',
