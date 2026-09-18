@@ -7,7 +7,6 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const authRoutes = require('./routes/authRoutes');
-const testRoutes = require('./routes/testRoutes');
 const societyRoutes = require('./routes/societyRoutes');
 const userRoutes = require('./routes/userRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
@@ -29,9 +28,6 @@ app.use(
 
 // Auth routes
 app.use('/api/auth', authRoutes);
-
-// Test routes
-app.use('/api/test', testRoutes);
 
 // Society routes
 app.use('/api/society', societyRoutes);
