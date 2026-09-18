@@ -35,4 +35,6 @@ const noticeSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+noticeSchema.index({ societyId: 1, isPriority: -1, createdAt: -1 });
+
 module.exports = mongoose.model('Notice', noticeSchema);

@@ -56,6 +56,13 @@ const ledgerSchema = new mongoose.Schema(
   }
 );
 
+// Compound unique sparse index to prevent duplicate bill ledger entries
+ledgerSchema.index({ referenceBillId: 1, type: 1 }, { unique: true, sparse: true });
+
+// Essential database query indexes
+ledgerSchema.index({ societyId: 1, date: -1, createdAt: -1 });
+ledgerSchema.index({ societyId: 1, type: 1, date: -1 });
+
 // Virtual getter to convert integer Paise to Rupees for client views
 ledgerSchema.virtual('amountInRupees').get(function () {
   return this.amountInPaise / 100;

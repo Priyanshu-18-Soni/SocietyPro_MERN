@@ -49,4 +49,7 @@ const complaintSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+complaintSchema.index({ societyId: 1, status: 1, createdAt: -1 });
+complaintSchema.index({ societyId: 1, createdAt: -1 });
+
 module.exports = mongoose.model('Complaint', complaintSchema);

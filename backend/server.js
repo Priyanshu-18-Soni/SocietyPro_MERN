@@ -59,6 +59,18 @@ app.get('/', (req, res) => {
     res.send('SocietyPro backend is running');
 });
 
+// Catch-all 404 JSON handler for undefined routes
+app.use((req, res) => res.status(404).json({ message: 'Resource not found' }));
+
+// Global error-handling middleware
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(err.status || 500).json({
+    success: false,
+    message: err.message || 'Internal Server Error',
+  });
+});
+
 // Connect to MongoDB
 mongoose.connect(process.env.MONGO_URI)
     .then(() => console.log('MongoDB connected'))

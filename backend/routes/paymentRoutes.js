@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const tenantMiddleware = require('../middleware/tenantMiddleware');
+const requireActiveUser = require('../middleware/requireActiveUser');
 const requirePermission = require('../middleware/requirePermission');
 const requireRole = require('../middleware/roleMiddleware');
 const { createOrder, verifyPayment, generateBill, getBills, handleRazorpayWebhook } = require('../controllers/paymentController');
@@ -9,13 +10,13 @@ const { createOrder, verifyPayment, generateBill, getBills, handleRazorpayWebhoo
 router.post('/webhook', handleRazorpayWebhook);
 
 // Residents can create payment orders for their own bills
-router.post('/create-order', tenantMiddleware, requireRole('Resident'), createOrder);
+router.post('/create-order', tenantMiddleware, requireActiveUser, requireRole('Resident'), createOrder);
 
 // Residents can verify their own payments
-router.post('/verify', tenantMiddleware, requireRole('Resident'), verifyPayment);
+router.post('/verify', tenantMiddleware, requireActiveUser, requireRole('Resident'), verifyPayment);
 
 // SocietyOwner or Committee with manageBills permission can generate bills
-router.post('/generate-bill', tenantMiddleware, (req, res, next) => {
+router.post('/generate-bill', tenantMiddleware, requireActiveUser, (req, res, next) => {
   // First check if user is SocietyOwner (always allowed)
   if (req.user.role === 'SocietyOwner') {
     return next();
@@ -31,6 +32,6 @@ router.post('/generate-bill', tenantMiddleware, (req, res, next) => {
 }, generateBill);
 
 // Get bills/payment history with role-based filtering handled in controller
-router.get('/', tenantMiddleware, getBills);
+router.get('/', tenantMiddleware, requireActiveUser, getBills);
 
 module.exports = router;

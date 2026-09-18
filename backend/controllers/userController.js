@@ -37,6 +37,14 @@ const updateUser = async (req, res) => {
       return res.status(404).json({ message: 'Resource not found' });
     }
 
+    if (user.role === 'SocietyOwner') {
+      return res.status(403).json({ message: 'Cannot modify or delete the Society Owner account' });
+    }
+
+    if (user.role === 'Committee' && req.user.role !== 'SocietyOwner') {
+      return res.status(403).json({ message: 'Only Society Owners can manage Committee members' });
+    }
+
     const { name, unitNumber } = req.body;
     if (name) user.name = name;
     if (unitNumber) user.unitNumber = unitNumber;
@@ -57,6 +65,14 @@ const deleteUser = async (req, res) => {
 
     if (!user) {
       return res.status(404).json({ message: 'Resource not found' });
+    }
+
+    if (user.role === 'SocietyOwner') {
+      return res.status(403).json({ message: 'Cannot modify or delete the Society Owner account' });
+    }
+
+    if (user.role === 'Committee' && req.user.role !== 'SocietyOwner') {
+      return res.status(403).json({ message: 'Only Society Owners can manage Committee members' });
     }
 
     await user.deleteOne();

@@ -106,7 +106,10 @@ const verifyPayment = async (req, res) => {
       .update(`${razorpay_order_id}|${razorpay_payment_id}`)
       .digest('hex');
 
-    if (generatedSignature !== razorpay_signature) {
+    const generatedBuf = Buffer.from(generatedSignature, 'utf8');
+    const receivedBuf = Buffer.from(razorpay_signature, 'utf8');
+
+    if (generatedBuf.length !== receivedBuf.length || !crypto.timingSafeEqual(generatedBuf, receivedBuf)) {
       await Payment.findOneAndUpdate(
         { razorpayOrderId: razorpay_order_id, societyId: req.user.societyId },
         { status: 'failed', updatedAt: Date.now() }
@@ -115,7 +118,7 @@ const verifyPayment = async (req, res) => {
     }
 
     const payment = await Payment.findOneAndUpdate(
-      { razorpayOrderId: razorpay_order_id, societyId: req.user.societyId },
+      { razorpayOrderId: razorpay_order_id, status: { $ne: 'captured' }, societyId: req.user.societyId },
       {
         razorpayPaymentId: razorpay_payment_id,
         status: 'captured',
@@ -125,6 +128,10 @@ const verifyPayment = async (req, res) => {
     );
 
     if (!payment) {
+      const existing = await Payment.findOne({ razorpayOrderId: razorpay_order_id, societyId: req.user.societyId });
+      if (existing && existing.status === 'captured') {
+        return res.status(200).json({ status: 'ok', message: 'Payment already processed', payment: existing });
+      }
       return res.status(404).json({ message: 'Resource not found' });
     }
 
@@ -290,7 +297,10 @@ const handleRazorpayWebhook = async (req, res) => {
       .update(payload)
       .digest('hex');
 
-    if (expectedSignature !== signature) {
+    const expectedBuf = Buffer.from(expectedSignature, 'utf8');
+    const signatureBuf = Buffer.from(signature, 'utf8');
+
+    if (expectedBuf.length !== signatureBuf.length || !crypto.timingSafeEqual(expectedBuf, signatureBuf)) {
       return res.status(400).json({ message: 'Invalid webhook signature' });
     }
 
@@ -301,26 +311,28 @@ const handleRazorpayWebhook = async (req, res) => {
       const orderId = paymentEntity.order_id;
       const paymentId = paymentEntity.id;
 
-      const payment = await Payment.findOne({ razorpayOrderId: orderId });
-      if (payment && payment.status !== 'captured') {
-        payment.status = 'captured';
-        payment.razorpayPaymentId = paymentId;
-        payment.updatedAt = Date.now();
-        await payment.save();
+      const payment = await Payment.findOneAndUpdate(
+        { razorpayOrderId: orderId, status: { $ne: 'captured' } },
+        { status: 'captured', razorpayPaymentId: paymentId, updatedAt: Date.now() },
+        { returnDocument: 'after' }
+      );
 
-        const existingLedger = await Ledger.findOne({ referenceBillId: payment._id, type: 'income' });
-        if (!existingLedger) {
-          await Ledger.create({
-            societyId: payment.societyId,
-            type: 'income',
-            category: 'Maintenance Bill',
-            amountInPaise: payment.amount + (payment.lateFee || 0),
-            paymentMethod: 'razorpay',
-            referenceBillId: payment._id,
-            description: `Webhook maintenance collection - Unit ${payment.unitNumber} (${payment.month})`,
-            recordedBy: payment.residentId,
-          });
-        }
+      if (!payment) {
+        return res.status(200).json({ status: 'ok', message: 'Payment already processed' });
+      }
+
+      const existingLedger = await Ledger.findOne({ referenceBillId: payment._id, type: 'income' });
+      if (!existingLedger) {
+        await Ledger.create({
+          societyId: payment.societyId,
+          type: 'income',
+          category: 'Maintenance Bill',
+          amountInPaise: payment.amount + (payment.lateFee || 0),
+          paymentMethod: 'razorpay',
+          referenceBillId: payment._id,
+          description: `Webhook maintenance collection - Unit ${payment.unitNumber} (${payment.month})`,
+          recordedBy: payment.residentId,
+        });
       }
     }
 

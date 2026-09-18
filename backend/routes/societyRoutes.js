@@ -27,7 +27,7 @@ router.get('/:id', tenantMiddleware, requirePermission('manageSociety'), getSoci
 // PATCH update a society - SocietyOwner can update their own society
 router.patch('/:id', tenantMiddleware, requirePermission('manageSociety'), updateSociety);
 
-// DELETE a society - SocietyOwner can delete their own society
-router.delete('/:id', tenantMiddleware, requirePermission('manageSociety'), deleteSociety);
+// DELETE a society - SocietyOwner only
+router.delete('/:id', tenantMiddleware, requireRole('SocietyOwner'), deleteSociety);
 
 module.exports = router;

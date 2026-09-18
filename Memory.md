@@ -139,19 +139,33 @@ The legacy role naming (`SocietyAdmin`) has been phased out in favor of 3 primar
 
 ---
 
-### 3.2 Recent Bug Fixes & Refactors
+### 3.2 Recent Bug Fixes & Security Hardening Remediations
 1. **Elimination of Legacy `SocietyAdmin`**:
    - Updated role checks and route guards to standard `SocietyOwner` or `Committee` with `permissions.manageResidents`.
 2. **Dashboard Role Dispatching Fix**:
    - Fixed `Dashboard.jsx` role dispatch to separate Owner/Committee from Resident views.
 3. **Cross-Tenant ID Probing & Information Leak Elimination**:
    - Replaced `findById(id)` + 403 checks with atomic compound scoping `findOne({ _id: id, societyId: req.user.societyId })`, immediately returning 404 `'Resource not found'` on miss.
+   - Refactored `societyController.js` (`getSocietyById`, `updateSociety`, `deleteSociety`) to check `req.params.id !== req.user.societyId.toString()` and query `Society.findOne({ _id: req.user.societyId })`, eliminating foreign ID probing oracles.
 4. **Unified API Base URL & Environment Config**:
    - Dynamic axios baseURL and environment templates `.env.example`.
 5. **Monetary Unit Unification into Paise**:
    - All internal calculations and database storage unified to integer Paise (`INR * 100`).
 6. **Mongoose 9 Deprecation Removal**:
-   - Replaced `{ new: true }` with `{ returnDocument: 'after' }` in `userController.js`, `complaintController.js`, and `paymentController.js`.
+   - Replaced `{ new: true }` with `{ returnDocument: 'after' }` in all controllers.
+7. **P0 Security Remediations (Hardening Sprint)**:
+   - **Gatekeeper Route Guarding**: Enforced `requireActiveUser` on `/create-order`, `/verify`, and `GET /` in `paymentRoutes.js`.
+   - **Society Destruction Privilege Escalation Prevention**: `router.delete('/api/society/:id')` restricted strictly to `requireRole('SocietyOwner')`.
+   - **Owner Account Protection**: `updateUser` and `deleteUser` in `userController.js` reject mutations targeting `SocietyOwner` (HTTP 403) and require `SocietyOwner` to modify `Committee` members.
+   - **Financial Double-Entry Race Condition Remediation**:
+     - Atomic status check in `Payment.findOneAndUpdate` with `{ razorpayOrderId: orderId, status: { $ne: 'captured' } }` in `verifyPayment` and `handleRazorpayWebhook`.
+     - Added compound sparse unique index `{ referenceBillId: 1, type: 1 }` in `Ledger.js`.
+8. **P1 Timing Attacks & Indexing**:
+   - **Constant-Time Signature Verification**: Replaced direct string inequality with `crypto.timingSafeEqual` over UTF-8 buffers for both webhook and checkout verification.
+   - **High-Performance Query Indexes**: Added compound and single indexes on `Payment`, `User`, `Complaint`, `Notice`, and `Ledger`.
+   - **Centralized Error Handling**: Express 404 JSON catch-all and global JSON error-handling middleware added to `server.js`.
+9. **P2 Database Aggregation Optimization**:
+   - Replaced in-memory ledger array loops in `financeController.js` with MongoDB `$facet` aggregation pipeline computing `totalIncome`, `totalExpense`, and `netBalance` on the database engine while streaming the top 50 recent entries.
 
 ---
 
@@ -163,15 +177,23 @@ Real HTTP integration test script executing against live Express 5 backend and M
 - **Scenario D: Resident Approval Lifecycle** -> Pending list contains resident -> Owner approves -> complaints route now returns **HTTP 200 OK**.
 - **Scenario E: Grievance Redressal Engine** -> Complaint filed (`affectedFlats: ['B-404']`) -> Second resident upvotes (`affectedFlats` length increases to 2) -> Committee updates status to `in_progress` -> Creator confirms verdict (`verdict: 'confirmed'`, status auto-closed).
 - **Scenario F: Notice Board Engine** -> Notice posted with `isPriority: true` -> Resident pins notice (`pinnedBy` array contains user ID) -> Resident unpins notice.
-- **Scenario G: Treasury Ledger & Financial Metrics** -> Manual expense recorded (₹2,500 = 250,000 paise) -> Metrics fetched -> `totalIncome: 0`, `totalExpense: 2500`, `netBalance: -2500`.
+- **Scenario G: Treasury Ledger & Financial Metrics** -> Manual expense recorded (₹3,500 = 350,000 paise) -> Metrics fetched -> `totalIncome: 0`, `totalExpense: 3500`, `netBalance: -3500`.
 - **Scenario H: Cross-Tenant Isolation Enforcement** -> Tenant B attempts to fetch Tenant A's complaint -> **HTTP 404 Resource not found**. Tenant B attempts to upvote Tenant A's complaint -> **HTTP 404 Resource not found**.
-- **Scenario I: Razorpay Webhook Simulation** -> HMAC-SHA256 signature calculated over raw body -> `/api/payments/webhook` processes `payment.captured` -> bill marked `captured` and `income` entry logged to `Ledger` -> financial metrics update accurately (`totalIncome: 1500`, `netBalance: -1000`).
+- **Scenario I: Razorpay Webhook Simulation** -> HMAC-SHA256 signature calculated over raw body -> `/api/payments/webhook` processes `payment.captured` -> bill marked `captured` and `income` entry logged to `Ledger` -> financial metrics update accurately (`totalIncome: 2000`, `netBalance: -1500`).
+- **Scenario J: Security Hardening & Concurrency Protection**:
+  - Replay webhook rejected gracefully -> returns `200` with `'Payment already processed'` and ledger income is not doubled.
+  - Constant-time HMAC comparison rejects forged webhook signatures with `HTTP 400`.
+  - Probing foreign society IDs returns `HTTP 404 'Resource not found'`, eliminating status-code oracle leaks.
+  - Attempting to delete `SocietyOwner` account is blocked with `HTTP 403`.
+  - Committee member attempting to delete society is blocked with `HTTP 403`.
+  - Pending resident blocked from payments route (`GET /api/payments`) with `HTTP 403 ACCOUNT_INACTIVE`.
+  - Undefined routes handled cleanly with catch-all `HTTP 404 { message: 'Resource not found' }`.
 
 **Test Execution Summary:**
 ```
 ============================================================
-TOTAL TESTS RUN: 43
-PASSED: 43
+TOTAL TESTS RUN: 58
+PASSED: 58
 FAILED: 0
 SUCCESS RATE: 100.0%
 ============================================================
@@ -234,21 +256,17 @@ Now that the backend is 100% complete and certified with zero test failures, Ast
 - **Defense**: Any route serving protected financial data, notice creation, or resident rosters chains `requireActiveUser` after `tenantMiddleware`.
 - **Client Behavior**: If the client receives HTTP 403 with `ACCOUNT_INACTIVE`, it renders an "Under Review" splash page.
 
-### 5.2 Razorpay Webhook Body Parsing
-- **Scenario**: Razorpay webhook verification fails if `express.json()` has already parsed and modified the payload body buffer.
-- **Defense**: Server captures raw buffer in `req.rawBody` via `express.json({ verify: ... })` and computes HMAC-SHA256 signature using `process.env.RAZORPAY_WEBHOOK_SECRET`.
+### 5.2 Razorpay Webhook Body Parsing & Replay Protection
+- **Scenario**: Razorpay webhook verification fails if `express.json()` modifies the payload body buffer, or a replay attack creates duplicate ledger income.
+- **Defense**: Server captures raw buffer in `req.rawBody` via `express.json({ verify: ... })` and computes constant-time HMAC-SHA256 signature using `crypto.timingSafeEqual`. Atomic status transition `{ status: { $ne: 'captured' } }` and compound sparse index `{ referenceBillId: 1, type: 1 }` prevent double-crediting.
 
 ### 5.3 DNS SRV Lookups on Windows Dev Environments
 - **Scenario**: Sudden `MongooseServerSelectionError: connection timed out` due to SRV record resolution failures.
 - **Defense**: Standard explicit shard hostnames in `.env` and `dns.setDefaultResultOrder('ipv4first')` in `server.js`.
 
-### 5.4 Cross-Tenant Data Injection
-- **Scenario**: A malicious resident from Society A sends a PATCH or GET request with the `_id` of a resident or bill in Society B.
-- **Defense**: Every database query by ID compounds with `societyId`:
-  ```javascript
-  const resource = await Model.findOne({ _id: req.params.id, societyId: req.user.societyId });
-  if (!resource) return res.status(404).json({ message: 'Resource not found' });
-  ```
+### 5.4 Cross-Tenant Data Injection & ID Probing
+- **Scenario**: A malicious resident from Society A sends a PATCH or GET request with the `_id` of a resident, bill, or foreign society in Society B.
+- **Defense**: Compound query scoping (`findOne({ _id: req.params.id, societyId: req.user.societyId })`) and strict society identity verification (`if (req.params.id !== req.user.societyId.toString()) return 404`) eliminate both data leaks and status-code enumeration oracles. Standardized response: `{ message: 'Resource not found' }`.
 
 ---
 

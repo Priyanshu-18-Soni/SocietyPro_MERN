@@ -347,6 +347,86 @@ async function runAllTests() {
       'Net balance computed correctly: ₹2000 income - ₹3500 expense = -₹1500'
     );
 
+    // ----------------------------------------------------
+    // Scenario J: Security Hardening & Concurrency Protection
+    // ----------------------------------------------------
+    console.log('\n--- SCENARIO J: Security Hardening & Concurrency Protection ---');
+
+    // 1. Re-send identical webhook (replay / race condition) -> returns 200 'Payment already processed'
+    const replayWebhookRes = await request(
+      'POST',
+      '/api/payments/webhook',
+      webhookPayload,
+      null,
+      { 'x-razorpay-signature': signature }
+    );
+    assert(replayWebhookRes.status === 200, 'Replay webhook safely returns HTTP 200');
+    assert(replayWebhookRes.data.message === 'Payment already processed', "Halts duplicate ledger insertion with 'Payment already processed'");
+
+    // Verify treasury ledger was NOT credited twice
+    const metricsAfterReplay = await request('GET', '/api/finances/metrics', null, owner1Token);
+    assert(metricsAfterReplay.data.metrics?.totalIncome === 2000, 'Treasury total income remains ₹2000 (no double entry)');
+
+    // 2. Timing-safe comparison rejection for invalid webhook signature
+    const badWebhookRes = await request(
+      'POST',
+      '/api/payments/webhook',
+      webhookPayload,
+      null,
+      { 'x-razorpay-signature': '0000000000000000000000000000000000000000000000000000000000000000' }
+    );
+    assert(badWebhookRes.status === 400, 'Constant-time comparison rejects invalid webhook signature (HTTP 400)');
+
+    // 3. Cross-tenant ID probing oracle elimination on society routes
+    const society2Id = owner2Res.data.society.id;
+    const probeSocietyRes = await request('GET', `/api/society/${society2Id}`, null, owner1Token);
+    assert(probeSocietyRes.status === 404, "Probing foreign society ID returns 404 'Resource not found'");
+    assert(probeSocietyRes.data.message === 'Resource not found', "Oracle eliminated: returns 'Resource not found' instead of 403 status leak");
+
+    // 4. Protection of SocietyOwner from deletion/modification
+    const owner1Id = owner1Res.data.user.id;
+    const deleteOwnerRes = await request('DELETE', `/api/users/${owner1Id}`, null, owner1Token);
+    assert(deleteOwnerRes.status === 403, 'SocietyOwner protected from deletion with HTTP 403');
+    assert(deleteOwnerRes.data.message === 'Cannot modify or delete the Society Owner account', 'Accurate 403 explanation returned');
+
+    // 5. Committee cannot delete society (privilege escalation prevention)
+    const committeeRes = await request('POST', '/api/committee', {
+      name: `Secretary ${ts}`,
+      email: `secretary_${ts}@alpha.com`,
+      password: 'Password123!',
+      customLabel: 'Secretary',
+      permissions: ['manageSociety', 'manageBills', 'manageResidents'],
+    }, owner1Token);
+    assert(committeeRes.status === 201, 'Committee member created with manageSociety permission');
+
+    const committeeLoginRes = await request('POST', '/api/auth/login', {
+      email: `secretary_${ts}@alpha.com`,
+      password: 'Password123!',
+    });
+    assert(committeeLoginRes.status === 200, 'Committee member logged in successfully');
+    const committeeToken = committeeLoginRes.data.token;
+
+    const committeeDeleteSociety = await request('DELETE', `/api/society/${society1Id}`, null, committeeToken);
+    assert(committeeDeleteSociety.status === 403, 'Committee forbidden from deleting society (HTTP 403 requires SocietyOwner)');
+
+    // 6. Gatekeeper route guard on payments
+    const pendingRes3 = await request('POST', '/api/auth/register-resident', {
+      name: 'Resident Pending Three',
+      email: `resident3_${ts}@alpha.com`,
+      password: 'Password123!',
+      societyCode: society1Code,
+      unitNumber: 'C-303',
+    });
+    const pending3Token = pendingRes3.data.token;
+    const pendingPaymentAccess = await request('GET', '/api/payments', null, pending3Token);
+    assert(pendingPaymentAccess.status === 403, 'Pending resident blocked from payments route with HTTP 403');
+    assert(pendingPaymentAccess.data.code === 'ACCOUNT_INACTIVE', 'Payment gatekeeper returns ACCOUNT_INACTIVE code');
+
+    // 7. Undefined route catch-all 404 handler
+    const undefinedRouteRes = await request('GET', '/api/nonexistent-endpoint-audit', null, null);
+    assert(undefinedRouteRes.status === 404, 'Catch-all middleware handles undefined route with HTTP 404');
+    assert(undefinedRouteRes.data.message === 'Resource not found', 'Catch-all returns JSON Resource not found');
+
     console.log('\n======================================================');
     console.log(`📊 TEST SUITE SUMMARY: ${testsPassed} PASSED, ${testsFailed} FAILED`);
     console.log('======================================================\n');

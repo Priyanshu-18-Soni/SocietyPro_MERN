@@ -1,24 +1,16 @@
 const Society = require('../models/Society');
 
-// Get a single society by ID - SocietyOwner can view their own society
+// Get a single society by ID - strictly scoped to requester's own society
 const getSocietyById = async (req, res) => {
   try {
-    const society = await Society.findById(req.params.id);
+    if (req.params.id !== req.user.societyId.toString()) {
+      return res.status(404).json({ message: 'Resource not found' });
+    }
+
+    const society = await Society.findOne({ _id: req.user.societyId });
 
     if (!society) {
-      return res.status(404).json({ message: 'Society not found' });
-    }
-
-    // SocietyOwner can only view their own society
-    if (req.user.role === 'SocietyOwner' && req.user.societyId.toString() !== req.params.id) {
-      return res.status(403).json({ message: 'Access denied. You can only view your own society.' });
-    }
-
-    // For Committee members, they would need specific permissions checked by requirePermission middleware
-    // But since we're using requirePermission('manageSociety') in the route, we assume they've passed that check
-    // However, we should still ensure they can only access their own society for consistency
-    if (req.user.role === 'Committee' && req.user.societyId.toString() !== req.params.id) {
-      return res.status(403).json({ message: 'Access denied. You can only view your own society.' });
+      return res.status(404).json({ message: 'Resource not found' });
     }
 
     res.status(200).json({ society });
@@ -28,24 +20,17 @@ const getSocietyById = async (req, res) => {
   }
 };
 
-// Update a society's details - SocietyOwner can update their own society
+// Update a society's details - strictly scoped to requester's own society
 const updateSociety = async (req, res) => {
   try {
-    const society = await Society.findById(req.params.id);
+    if (req.params.id !== req.user.societyId.toString()) {
+      return res.status(404).json({ message: 'Resource not found' });
+    }
+
+    const society = await Society.findOne({ _id: req.user.societyId });
 
     if (!society) {
-      return res.status(404).json({ message: 'Society not found' });
-    }
-
-    // SocietyOwner can only update their own society
-    if (req.user.role === 'SocietyOwner' && req.user.societyId.toString() !== req.params.id) {
-      return res.status(403).json({ message: 'Access denied. You can only update your own society.' });
-    }
-
-    // Committee members would need specific permissions checked by requirePermission middleware
-    // But we still enforce society ownership for consistency
-    if (req.user.role === 'Committee' && req.user.societyId.toString() !== req.params.id) {
-      return res.status(403).json({ message: 'Access denied. You can only update your own society.' });
+      return res.status(404).json({ message: 'Resource not found' });
     }
 
     const { name, address, city, registrationNumber } = req.body;
@@ -63,24 +48,17 @@ const updateSociety = async (req, res) => {
   }
 };
 
-// Delete a society - SocietyOwner can delete their own society
+// Delete a society - strictly scoped to requester's own society
 const deleteSociety = async (req, res) => {
   try {
-    const society = await Society.findById(req.params.id);
+    if (req.params.id !== req.user.societyId.toString()) {
+      return res.status(404).json({ message: 'Resource not found' });
+    }
+
+    const society = await Society.findOne({ _id: req.user.societyId });
 
     if (!society) {
-      return res.status(404).json({ message: 'Society not found' });
-    }
-
-    // SocietyOwner can only delete their own society
-    if (req.user.role === 'SocietyOwner' && req.user.societyId.toString() !== req.params.id) {
-      return res.status(403).json({ message: 'Access denied. You can only delete your own society.' });
-    }
-
-    // Committee members would need specific permissions checked by requirePermission middleware
-    // But we still enforce society ownership for consistency
-    if (req.user.role === 'Committee' && req.user.societyId.toString() !== req.params.id) {
-      return res.status(403).json({ message: 'Access denied. You can only delete your own society.' });
+      return res.status(404).json({ message: 'Resource not found' });
     }
 
     await society.deleteOne();
@@ -120,7 +98,7 @@ const updateDefaultRates = async (req, res) => {
 
     const society = await Society.findById(req.user.societyId);
     if (!society) {
-      return res.status(404).json({ message: 'Society not found' });
+      return res.status(404).json({ message: 'Resource not found' });
     }
 
     society.defaultRateItems = rateItems.map((item) => ({
@@ -146,7 +124,7 @@ const getDefaultRates = async (req, res) => {
   try {
     const society = await Society.findById(req.user.societyId);
     if (!society) {
-      return res.status(404).json({ message: 'Society not found' });
+      return res.status(404).json({ message: 'Resource not found' });
     }
 
     res.status(200).json({ defaultRateItems: society.defaultRateItems });
@@ -208,7 +186,7 @@ const updateLateFeeSettings = async (req, res) => {
 
     const society = await Society.findById(req.user.societyId);
     if (!society) {
-      return res.status(404).json({ message: 'Society not found' });
+      return res.status(404).json({ message: 'Resource not found' });
     }
 
     if (!society.lateFeeSettings) {
@@ -246,7 +224,7 @@ const getLateFeeSettings = async (req, res) => {
   try {
     const society = await Society.findById(req.user.societyId);
     if (!society) {
-      return res.status(404).json({ message: 'Society not found' });
+      return res.status(404).json({ message: 'Resource not found' });
     }
 
     const lateFeeSettings = society.lateFeeSettings || {

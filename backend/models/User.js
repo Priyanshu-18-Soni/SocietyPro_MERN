@@ -60,4 +60,8 @@ const userSchema = new mongoose.Schema({
   },
 });
 
+userSchema.index({ societyId: 1, role: 1 });
+userSchema.index({ societyId: 1, role: 1, status: 1 });
+userSchema.index({ societyId: 1, unitNumber: 1 });
+
 module.exports = mongoose.model('User', userSchema);
