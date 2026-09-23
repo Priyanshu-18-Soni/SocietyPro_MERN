@@ -9,6 +9,7 @@ import SocietyManagement from './pages/SocietyManagement';
 import CommitteeManagement from './pages/CommitteeManagement';
 import Payments from './pages/Payments';
 import ResidentManagement from './pages/ResidentManagement';
+import PendingApproval from './pages/PendingApproval';
 
 function App() {
   return (
@@ -19,6 +20,8 @@ function App() {
           <Route path="/login" element={<Login />} />
           {/* Public Register Route */}
           <Route path="/register" element={<Register />} />
+          {/* Standalone Pending Approval Route */}
+          <Route path="/pending-approval" element={<PendingApproval />} />
 
           {/* Protected Dashboard Route (All authenticated roles) */}
           <Route

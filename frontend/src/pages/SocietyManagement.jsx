@@ -134,6 +134,7 @@ const SocietyManagement = () => {
 
   useEffect(() => {
     if (activeTab === 'rates') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       fetchDefaultRates();
     } else if (activeTab === 'lateFee') {
       fetchLateFeeSettings();
