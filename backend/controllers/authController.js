@@ -176,6 +176,7 @@ const loginUser = async (req, res) => {
         role: user.role,
         societyId: user.societyId,
         unitNumber: user.unitNumber,
+        permissions: user.permissions || [],
         status: user.status,
       },
     });

@@ -9,7 +9,10 @@ import {
   Check,
   RefreshCw,
   TrendingUp,
-  AlertTriangle
+  AlertTriangle,
+  Plus,
+  X,
+  FileText
 } from 'lucide-react';
 import axiosInstance from '../api/axiosInstance';
 import { useAuth } from '../context/AuthContext';
@@ -24,6 +27,25 @@ const Payments = () => {
   const [notification, setNotification] = useState(null);
   const [activeMenuId, setActiveMenuId] = useState(null);
 
+  // Bill Generation Permissions & Modal States
+  const canGenerateBill =
+    user?.role === 'SocietyOwner' ||
+    (user?.role === 'Committee' && user?.permissions?.includes('manageBills'));
+
+  const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
+  const [residents, setResidents] = useState([]);
+  const [residentsLoading, setResidentsLoading] = useState(false);
+  const [generateFormData, setGenerateFormData] = useState({
+    residentId: '',
+    unitNumber: '',
+    amount: '',
+    month: '',
+    dueDate: '',
+  });
+  const [generateFormErrors, setGenerateFormErrors] = useState({});
+  const [generateSubmitLoading, setGenerateSubmitLoading] = useState(false);
+  const [generateSubmitError, setGenerateSubmitError] = useState('');
+
   // Fetch real bills from API
   const fetchBills = async () => {
     setLoading(true);
@@ -36,6 +58,117 @@ const Payments = () => {
       setError(err.response?.data?.message || 'Failed to load payments and bills.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Fetch residents for bill generation dropdown
+  const fetchResidents = async () => {
+    setResidentsLoading(true);
+    try {
+      const response = await axiosInstance.get('/users');
+      const userList = response.data.users || [];
+      const residentList = userList.filter((u) => u.role === 'Resident');
+      setResidents(residentList);
+    } catch (err) {
+      console.error('Failed to load residents for bill generation:', err);
+    } finally {
+      setResidentsLoading(false);
+    }
+  };
+
+  // Open Generate Modal with auto-filled default month and due date
+  const handleOpenGenerateModal = () => {
+    const now = new Date();
+    const defaultMonth = now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    const nextDueDate = new Date();
+    nextDueDate.setDate(nextDueDate.getDate() + 15);
+    const defaultDueDate = nextDueDate.toISOString().split('T')[0];
+
+    setGenerateFormData({
+      residentId: '',
+      unitNumber: '',
+      amount: '',
+      month: defaultMonth,
+      dueDate: defaultDueDate,
+    });
+    setGenerateFormErrors({});
+    setGenerateSubmitError('');
+    setIsGenerateModalOpen(true);
+
+    if (residents.length === 0) {
+      fetchResidents();
+    }
+  };
+
+  const handleResidentChange = (e) => {
+    const selectedId = e.target.value;
+    const selected = residents.find((r) => r._id === selectedId);
+    setGenerateFormData((prev) => ({
+      ...prev,
+      residentId: selectedId,
+      unitNumber: selected?.unitNumber || '',
+    }));
+    if (generateFormErrors.residentId || generateFormErrors.unitNumber) {
+      setGenerateFormErrors((prev) => ({
+        ...prev,
+        residentId: '',
+        unitNumber: '',
+      }));
+    }
+  };
+
+  const validateGenerateForm = () => {
+    const errors = {};
+    if (!generateFormData.residentId) {
+      errors.residentId = 'Please select a resident';
+    }
+    if (!generateFormData.unitNumber.trim()) {
+      errors.unitNumber = 'Unit number is required';
+    }
+    const numAmount = Number(generateFormData.amount);
+    if (!generateFormData.amount || isNaN(numAmount) || numAmount <= 0) {
+      errors.amount = 'Please enter a valid amount in Rupees (greater than ₹0)';
+    }
+    if (!generateFormData.month.trim()) {
+      errors.month = 'Billing month is required';
+    }
+    if (!generateFormData.dueDate) {
+      errors.dueDate = 'Due date is required';
+    }
+    setGenerateFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleGenerateBillSubmit = async (e) => {
+    e.preventDefault();
+    setGenerateSubmitError('');
+    if (!validateGenerateForm()) return;
+
+    setGenerateSubmitLoading(true);
+    try {
+      const payload = {
+        residentId: generateFormData.residentId,
+        amount: Number(generateFormData.amount),
+        unitNumber: generateFormData.unitNumber.trim(),
+        month: generateFormData.month.trim(),
+        dueDate: generateFormData.dueDate,
+      };
+
+      await axiosInstance.post('/payments/generate-bill', payload);
+
+      setIsGenerateModalOpen(false);
+      setNotification({
+        type: 'success',
+        message: `Maintenance bill generated successfully for Unit ${payload.unitNumber} (${payload.month})!`,
+      });
+      fetchBills();
+    } catch (err) {
+      console.error(err);
+      setGenerateSubmitError(
+        err.response?.data?.message || 'Failed to generate bill. Please check inputs and try again.'
+      );
+    } finally {
+      setGenerateSubmitLoading(false);
     }
   };
 
@@ -202,15 +335,28 @@ const Payments = () => {
           </p>
         </div>
 
-        <button
-          onClick={fetchBills}
-          disabled={loading}
-          className="h-10 px-4 bg-white border border-border hover:bg-slate-50 text-slate font-medium text-xs rounded-lg transition-colors flex items-center gap-2 shadow-xs cursor-pointer active:scale-98 self-start sm:self-auto"
-          title="Refresh Bills"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-          <span>Refresh</span>
-        </button>
+        <div className="flex items-center gap-2.5 self-start sm:self-auto">
+          {canGenerateBill && (
+            <button
+              onClick={handleOpenGenerateModal}
+              className="h-10 px-4 bg-[#0F172A] hover:bg-[#1E293B] active:scale-98 text-[#D4AF37] font-semibold text-xs sm:text-sm rounded-lg transition-all flex items-center gap-2 shadow-sm border border-[#D4AF37]/30 cursor-pointer"
+              title="Generate New Bill"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Generate Bill</span>
+            </button>
+          )}
+
+          <button
+            onClick={fetchBills}
+            disabled={loading}
+            className="h-10 px-4 bg-white border border-border hover:bg-slate-50 text-slate font-medium text-xs rounded-lg transition-colors flex items-center gap-2 shadow-xs cursor-pointer active:scale-98"
+            title="Refresh Bills"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            <span>Refresh</span>
+          </button>
+        </div>
       </div>
 
       {/* Notifications */}
@@ -548,6 +694,217 @@ const Payments = () => {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Generate Bill Modal */}
+      {isGenerateModalOpen && (
+        <div className="fixed inset-0 bg-charcoal/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="bg-white rounded-xl shadow-lg border border-border w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-150 text-left">
+            {/* Modal Header */}
+            <div className="px-6 py-4 border-b border-border flex items-center justify-between">
+              <div className="flex items-center space-x-2.5">
+                <div className="p-2 bg-primary-subtle text-primary rounded-lg">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-charcoal">Generate Maintenance Bill</h3>
+                  <p className="text-xs text-slate">Issue a monthly maintenance bill to a society resident.</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsGenerateModalOpen(false)}
+                className="text-slate hover:text-charcoal cursor-pointer p-1 rounded-lg hover:bg-slate-100 transition-colors"
+                title="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Form */}
+            <form onSubmit={handleGenerateBillSubmit}>
+              <div className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+                {generateSubmitError && (
+                  <div className="p-3 bg-red-50 border border-error/20 text-error rounded-lg text-sm font-medium flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{generateSubmitError}</span>
+                  </div>
+                )}
+
+                {/* Resident Dropdown */}
+                <div>
+                  <label htmlFor="bill-resident" className="block text-sm font-medium text-charcoal mb-1">
+                    Select Resident <span className="text-error">*</span>
+                  </label>
+                  <select
+                    id="bill-resident"
+                    value={generateFormData.residentId}
+                    onChange={handleResidentChange}
+                    disabled={generateSubmitLoading || residentsLoading}
+                    className={`w-full h-11 px-3.5 py-2.5 bg-white border rounded-lg text-charcoal focus:outline-none focus:ring-2 focus:ring-[#0F172A]/20 focus:border-[#0F172A] transition-colors cursor-pointer ${
+                      generateFormErrors.residentId ? 'border-error' : 'border-border'
+                    }`}
+                  >
+                    <option value="">
+                      {residentsLoading ? 'Loading residents list...' : '-- Choose a resident --'}
+                    </option>
+                    {residents.map((r) => (
+                      <option key={r._id} value={r._id}>
+                        {r.name} {r.unitNumber ? `(Unit: ${r.unitNumber})` : '(No Unit Assigned)'} — {r.email}
+                      </option>
+                    ))}
+                  </select>
+                  {generateFormErrors.residentId && (
+                    <p className="mt-1 text-xs text-error font-medium">{generateFormErrors.residentId}</p>
+                  )}
+                </div>
+
+                {/* Unit Number & Amount in 2 columns */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="bill-unit" className="block text-sm font-medium text-charcoal mb-1">
+                      Unit Number <span className="text-error">*</span>
+                    </label>
+                    <input
+                      id="bill-unit"
+                      type="text"
+                      placeholder="e.g. A-101"
+                      value={generateFormData.unitNumber}
+                      onChange={(e) => {
+                        setGenerateFormData({ ...generateFormData, unitNumber: e.target.value });
+                        if (generateFormErrors.unitNumber) {
+                          setGenerateFormErrors({ ...generateFormErrors, unitNumber: '' });
+                        }
+                      }}
+                      disabled={generateSubmitLoading}
+                      className={`w-full h-11 px-3.5 py-2.5 bg-white border rounded-lg text-charcoal placeholder-slate/40 focus:outline-none focus:ring-2 focus:ring-[#0F172A]/20 focus:border-[#0F172A] transition-colors ${
+                        generateFormErrors.unitNumber ? 'border-error' : 'border-border'
+                      }`}
+                    />
+                    {generateFormErrors.unitNumber && (
+                      <p className="mt-1 text-xs text-error font-medium">{generateFormErrors.unitNumber}</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label htmlFor="bill-amount" className="block text-sm font-medium text-charcoal mb-1">
+                      Amount (₹) <span className="text-error">*</span>
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate font-semibold text-sm">
+                        ₹
+                      </span>
+                      <input
+                        id="bill-amount"
+                        type="number"
+                        min="1"
+                        step="any"
+                        placeholder="e.g. 1500"
+                        value={generateFormData.amount}
+                        onChange={(e) => {
+                          setGenerateFormData({ ...generateFormData, amount: e.target.value });
+                          if (generateFormErrors.amount) {
+                            setGenerateFormErrors({ ...generateFormErrors, amount: '' });
+                          }
+                        }}
+                        disabled={generateSubmitLoading}
+                        className={`w-full h-11 pl-8 pr-3.5 py-2.5 bg-white border rounded-lg text-charcoal placeholder-slate/40 focus:outline-none focus:ring-2 focus:ring-[#0F172A]/20 focus:border-[#0F172A] transition-colors ${
+                          generateFormErrors.amount ? 'border-error' : 'border-border'
+                        }`}
+                      />
+                    </div>
+                    {generateFormErrors.amount && (
+                      <p className="mt-1 text-xs text-error font-medium">{generateFormErrors.amount}</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Month & Due Date in 2 columns */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="bill-month" className="block text-sm font-medium text-charcoal mb-1">
+                      Billing Month <span className="text-error">*</span>
+                    </label>
+                    <input
+                      id="bill-month"
+                      type="text"
+                      placeholder="e.g. August 2026"
+                      value={generateFormData.month}
+                      onChange={(e) => {
+                        setGenerateFormData({ ...generateFormData, month: e.target.value });
+                        if (generateFormErrors.month) {
+                          setGenerateFormErrors({ ...generateFormErrors, month: '' });
+                        }
+                      }}
+                      disabled={generateSubmitLoading}
+                      className={`w-full h-11 px-3.5 py-2.5 bg-white border rounded-lg text-charcoal placeholder-slate/40 focus:outline-none focus:ring-2 focus:ring-[#0F172A]/20 focus:border-[#0F172A] transition-colors ${
+                        generateFormErrors.month ? 'border-error' : 'border-border'
+                      }`}
+                    />
+                    {generateFormErrors.month && (
+                      <p className="mt-1 text-xs text-error font-medium">{generateFormErrors.month}</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label htmlFor="bill-due-date" className="block text-sm font-medium text-charcoal mb-1">
+                      Due Date <span className="text-error">*</span>
+                    </label>
+                    <input
+                      id="bill-due-date"
+                      type="date"
+                      value={generateFormData.dueDate}
+                      onChange={(e) => {
+                        setGenerateFormData({ ...generateFormData, dueDate: e.target.value });
+                        if (generateFormErrors.dueDate) {
+                          setGenerateFormErrors({ ...generateFormErrors, dueDate: '' });
+                        }
+                      }}
+                      disabled={generateSubmitLoading}
+                      className={`w-full h-11 px-3.5 py-2.5 bg-white border rounded-lg text-charcoal placeholder-slate/40 focus:outline-none focus:ring-2 focus:ring-[#0F172A]/20 focus:border-[#0F172A] transition-colors ${
+                        generateFormErrors.dueDate ? 'border-error' : 'border-border'
+                      }`}
+                    />
+                    {generateFormErrors.dueDate && (
+                      <p className="mt-1 text-xs text-error font-medium">{generateFormErrors.dueDate}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="px-6 py-4 bg-slate-50 border-t border-border flex justify-end space-x-3">
+                <button
+                  type="button"
+                  onClick={() => setIsGenerateModalOpen(false)}
+                  disabled={generateSubmitLoading}
+                  className="bg-white border border-border text-charcoal hover:bg-slate-100 font-medium px-4 py-2.5 text-sm rounded-lg transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={generateSubmitLoading}
+                  className="bg-[#0F172A] hover:bg-[#1E293B] text-[#D4AF37] border border-[#D4AF37]/30 font-semibold px-5 py-2.5 text-sm rounded-lg transition-colors cursor-pointer flex items-center space-x-2 shadow-md active:scale-98 disabled:opacity-50"
+                >
+                  {generateSubmitLoading ? (
+                    <>
+                      <svg className="animate-spin h-4 w-4 text-[#D4AF37]" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      <span>Generating...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-4 h-4" />
+                      <span>Generate Bill</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>
