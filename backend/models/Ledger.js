@@ -32,7 +32,6 @@ const ledgerSchema = new mongoose.Schema(
     referenceBillId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Payment',
-      default: null,
     },
     description: {
       type: String,
@@ -56,8 +55,11 @@ const ledgerSchema = new mongoose.Schema(
   }
 );
 
-// Compound unique sparse index to prevent duplicate bill ledger entries
-ledgerSchema.index({ referenceBillId: 1, type: 1 }, { unique: true, sparse: true });
+// Compound unique index for bill ledger entries preventing duplicate credit without colliding manual entries
+ledgerSchema.index(
+  { referenceBillId: 1, type: 1 },
+  { unique: true, partialFilterExpression: { referenceBillId: { $type: 'objectId' } } }
+);
 
 // Essential database query indexes
 ledgerSchema.index({ societyId: 1, date: -1, createdAt: -1 });

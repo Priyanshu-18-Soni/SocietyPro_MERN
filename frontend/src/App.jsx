@@ -10,6 +10,7 @@ import CommitteeManagement from './pages/CommitteeManagement';
 import Payments from './pages/Payments';
 import Complaints from './pages/Complaints';
 import Notices from './pages/Notices';
+import Ledger from './pages/Ledger';
 import ResidentManagement from './pages/ResidentManagement';
 import PendingApproval from './pages/PendingApproval';
 
@@ -104,6 +105,18 @@ function App() {
               <ProtectedRoute>
                 <Layout>
                   <Notices />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Protected Treasury Ledger Route (All authenticated active roles) */}
+          <Route
+            path="/ledger"
+            element={
+              <ProtectedRoute>
+                <Layout>
+                  <Ledger />
                 </Layout>
               </ProtectedRoute>
             }

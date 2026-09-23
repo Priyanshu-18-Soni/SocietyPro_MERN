@@ -12,7 +12,8 @@ import {
   X, 
   LogOut,
   User as UserIcon,
-  MessageSquare
+  MessageSquare,
+  Wallet
 } from 'lucide-react';
 
 const Layout = ({ children }) => {
@@ -59,6 +60,13 @@ const Layout = ({ children }) => {
       name: 'Payments',
       path: '/payments',
       icon: CreditCard,
+      disabled: false,
+      visible: true
+    },
+    {
+      name: 'Ledger',
+      path: '/ledger',
+      icon: Wallet,
       disabled: false,
       visible: true
     },
