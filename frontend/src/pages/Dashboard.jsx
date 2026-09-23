@@ -2,15 +2,15 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import axiosInstance from '../api/axiosInstance';
 import { Link } from 'react-router-dom';
-import { 
-  Building, 
-  Users, 
+import {
+  Building,
+  Users,
   Home,
-  Bell, 
-  PlusCircle, 
-  ArrowRight, 
-  Shield, 
-  DollarSign, 
+  Bell,
+  PlusCircle,
+  ArrowRight,
+  Shield,
+  DollarSign,
   Activity,
   FileText,
   AlertCircle,
@@ -22,7 +22,8 @@ import {
   Calendar,
   Sparkles,
   RefreshCw,
-  UserCheck
+  UserCheck,
+  CreditCard
 } from 'lucide-react';
 
 const Dashboard = () => {
@@ -50,12 +51,12 @@ const Dashboard = () => {
     setLoading(true);
 
     const isSuperAdmin = user?.role === 'SuperAdmin';
-    const isOwnerOrCommittee = 
-      user?.role === 'SocietyOwner' || 
-      user?.role === 'Committee' || 
+    const isOwnerOrCommittee =
+      user?.role === 'SocietyOwner' ||
+      user?.role === 'Committee' ||
       user?.role === 'SocietyAdmin';
-    const canManageResidents = 
-      user?.role === 'SocietyOwner' || 
+    const canManageResidents =
+      user?.role === 'SocietyOwner' ||
       (user?.role === 'Committee' && user?.permissions?.includes('manageResidents'));
 
     try {
@@ -246,8 +247,8 @@ const Dashboard = () => {
                 </h3>
               </div>
             </div>
-            <Link 
-              to="/societies" 
+            <Link
+              to="/societies"
               className="p-1.5 rounded-full text-slate hover:bg-slate-100 hover:text-primary transition-all duration-200"
               title="Manage Societies"
             >
@@ -331,7 +332,7 @@ const Dashboard = () => {
           <div className="relative z-10 max-w-xl text-left">
             <div className="flex items-center gap-2">
               <h1 className="text-3xl font-bold tracking-tight">Welcome, {user?.name || 'Admin'}</h1>
-              <button 
+              <button
                 onClick={fetchStats}
                 disabled={loading}
                 className="p-1 rounded-full text-white/70 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
@@ -557,7 +558,7 @@ const Dashboard = () => {
           <div className="relative z-10 max-w-xl text-left">
             <div className="flex items-center gap-2">
               <h1 className="text-3xl font-bold tracking-tight">Hello, {user?.name || 'Resident'}</h1>
-              <button 
+              <button
                 onClick={fetchStats}
                 disabled={loading}
                 className="p-1 rounded-full text-white/70 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
@@ -730,8 +731,8 @@ const Dashboard = () => {
   if (user?.role === 'SuperAdmin') {
     return renderSuperAdminDashboard();
   } else if (
-    user?.role === 'SocietyOwner' || 
-    user?.role === 'Committee' || 
+    user?.role === 'SocietyOwner' ||
+    user?.role === 'Committee' ||
     user?.role === 'SocietyAdmin'
   ) {
     return renderSocietyAdminDashboard();
