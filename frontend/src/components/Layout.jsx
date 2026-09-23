@@ -73,8 +73,7 @@ const Layout = ({ children }) => {
       name: 'Notices',
       path: '/notices',
       icon: Bell,
-      disabled: true,
-      badge: 'Coming Soon',
+      disabled: false,
       visible: true
     }
   ];

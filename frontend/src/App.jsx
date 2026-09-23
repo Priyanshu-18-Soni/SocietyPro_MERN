@@ -9,6 +9,7 @@ import SocietyManagement from './pages/SocietyManagement';
 import CommitteeManagement from './pages/CommitteeManagement';
 import Payments from './pages/Payments';
 import Complaints from './pages/Complaints';
+import Notices from './pages/Notices';
 import ResidentManagement from './pages/ResidentManagement';
 import PendingApproval from './pages/PendingApproval';
 
@@ -91,6 +92,18 @@ function App() {
               <ProtectedRoute>
                 <Layout>
                   <Complaints />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Protected Notices Route (All authenticated active roles) */}
+          <Route
+            path="/notices"
+            element={
+              <ProtectedRoute>
+                <Layout>
+                  <Notices />
                 </Layout>
               </ProtectedRoute>
             }
