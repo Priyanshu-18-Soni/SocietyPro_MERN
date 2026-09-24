@@ -40,7 +40,7 @@ const Layout = ({ children }) => {
       path: '/societies',
       icon: Building,
       disabled: false,
-      visible: user?.role === 'SocietyOwner' || user?.role === 'Committee'
+      visible: user?.role === 'SocietyOwner' || (user?.role === 'Committee' && user?.permissions?.includes('manageSociety'))
     },
     {
       name: 'Committee',

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import axiosInstance from '../api/axiosInstance';
+import { useAuth } from '../context/AuthContext';
 import { 
   Users, 
   Search, 
@@ -19,6 +20,11 @@ import {
 } from 'lucide-react';
 
 const ResidentManagement = () => {
+  const { user } = useAuth();
+  const canManageResidents =
+    user?.role === 'SocietyOwner' ||
+    (user?.role === 'Committee' && user?.permissions?.includes('manageResidents'));
+
   // Navigation tabs: 'all' | 'pending'
   const [activeTab, setActiveTab] = useState('all');
 
@@ -507,22 +513,24 @@ const ResidentManagement = () => {
                       </div>
                     </div>
 
-                    <div className="mt-6 pt-4 border-t border-border flex items-center justify-end space-x-2">
-                      <button
-                        onClick={() => handleOpenEditModal(resident)}
-                        className="p-2 rounded-lg text-slate hover:bg-primary-subtle hover:text-primary transition-all duration-200 cursor-pointer"
-                        title="Edit Resident"
-                      >
-                        <Edit className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleOpenDeleteModal(resident)}
-                        className="p-2 rounded-lg text-slate hover:bg-red-50 hover:text-error transition-all duration-200 cursor-pointer"
-                        title="Remove Resident"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
+                    {canManageResidents && (
+                      <div className="mt-6 pt-4 border-t border-border flex items-center justify-end space-x-2">
+                        <button
+                          onClick={() => handleOpenEditModal(resident)}
+                          className="p-2 rounded-lg text-slate hover:bg-primary-subtle hover:text-primary transition-all duration-200 cursor-pointer"
+                          title="Edit Resident"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleOpenDeleteModal(resident)}
+                          className="p-2 rounded-lg text-slate hover:bg-red-50 hover:text-error transition-all duration-200 cursor-pointer"
+                          title="Remove Resident"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -662,34 +670,42 @@ const ResidentManagement = () => {
 
                     {/* Approve / Reject Actions */}
                     <div className="mt-6 pt-4 border-t border-border/80 flex items-center justify-end space-x-2.5">
-                      <button
-                        type="button"
-                        onClick={() => handleOpenRejectModal(resident)}
-                        disabled={isActionInProgress}
-                        className="bg-white hover:bg-red-50 text-error border border-error/30 hover:border-error font-semibold px-3.5 py-2 text-xs rounded-lg transition-colors cursor-pointer flex items-center space-x-1.5 disabled:opacity-50"
-                      >
-                        <XCircle className="w-4 h-4" />
-                        <span>Reject</span>
-                      </button>
+                      {canManageResidents ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenRejectModal(resident)}
+                            disabled={isActionInProgress}
+                            className="bg-white hover:bg-red-50 text-error border border-error/30 hover:border-error font-semibold px-3.5 py-2 text-xs rounded-lg transition-colors cursor-pointer flex items-center space-x-1.5 disabled:opacity-50"
+                          >
+                            <XCircle className="w-4 h-4" />
+                            <span>Reject</span>
+                          </button>
 
-                      <button
-                        type="button"
-                        onClick={() => handleApproveResident(resident)}
-                        disabled={isActionInProgress}
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-4 py-2 text-xs rounded-lg transition-colors cursor-pointer flex items-center space-x-1.5 shadow-xs active:scale-98 disabled:opacity-50"
-                      >
-                        {isActionInProgress ? (
-                          <>
-                            <RotateCw className="w-3.5 h-3.5 animate-spin text-white" />
-                            <span>Approving...</span>
-                          </>
-                        ) : (
-                          <>
-                            <Check className="w-4 h-4" />
-                            <span>Approve</span>
-                          </>
-                        )}
-                      </button>
+                          <button
+                            type="button"
+                            onClick={() => handleApproveResident(resident)}
+                            disabled={isActionInProgress}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-4 py-2 text-xs rounded-lg transition-colors cursor-pointer flex items-center space-x-1.5 shadow-xs active:scale-98 disabled:opacity-50"
+                          >
+                            {isActionInProgress ? (
+                              <>
+                                <RotateCw className="w-3.5 h-3.5 animate-spin text-white" />
+                                <span>Approving...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Check className="w-4 h-4" />
+                                <span>Approve</span>
+                              </>
+                            )}
+                          </button>
+                        </>
+                      ) : (
+                        <span className="text-xs text-slate-400 italic">
+                          Action requires &apos;manageResidents&apos; permission
+                        </span>
+                      )}
                     </div>
                   </div>
                 );
