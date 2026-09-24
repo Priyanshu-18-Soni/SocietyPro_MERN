@@ -343,4 +343,87 @@ const handleRazorpayWebhook = async (req, res) => {
   }
 };
 
-module.exports = { createOrder, verifyPayment, generateBill, getBills, handleRazorpayWebhook };
+// Bulk generate maintenance bills for all active residents of the society
+const generateBulkBills = async (req, res) => {
+  try {
+    const { title, month, amount, dueDate, description } = req.body;
+
+    // Validate required fields
+    if (!month || !amount || !dueDate) {
+      return res.status(400).json({ message: 'Please provide all required fields: month, amount, dueDate' });
+    }
+
+    if (Number(amount) <= 0 || isNaN(Number(amount))) {
+      return res.status(400).json({ message: 'Amount must be greater than zero' });
+    }
+
+    // Query all active residents of this society
+    const activeResidents = await User.find({
+      societyId: req.user.societyId,
+      role: 'Resident',
+      status: 'active',
+    });
+
+    if (!activeResidents || activeResidents.length === 0) {
+      return res.status(400).json({ message: 'No active residents found in society' });
+    }
+
+    // Duplicate protection: find existing bills for these residents for the same month and society
+    const residentIds = activeResidents.map((r) => r._id);
+    const existingBills = await Payment.find({
+      societyId: req.user.societyId,
+      residentId: { $in: residentIds },
+      month: month.trim(),
+    });
+
+    const existingResidentIds = new Set(existingBills.map((b) => b.residentId.toString()));
+
+    // Filter out residents who already have a bill for this month
+    const eligibleResidents = activeResidents.filter(
+      (r) => !existingResidentIds.has(r._id.toString())
+    );
+
+    const skippedDuplicates = activeResidents.length - eligibleResidents.length;
+
+    if (eligibleResidents.length === 0) {
+      return res.status(400).json({
+        message: `Bills for "${month}" already exist for all ${activeResidents.length} active resident(s). No new bills generated.`,
+        skippedDuplicates,
+      });
+    }
+
+    // Convert amount from Rupees to Paise (consistent with generateBill convention)
+    const amountInPaise = Math.round(Number(amount) * 100);
+    const billTitle = title || `Maintenance - ${month}`;
+
+    // Construct bill documents for eligible residents
+    const newBills = eligibleResidents.map((resident) => ({
+      societyId: req.user.societyId,
+      residentId: resident._id,
+      amount: amountInPaise,
+      lateFee: 0,
+      currency: 'INR',
+      unitNumber: resident.unitNumber || 'N/A',
+      month: month.trim(),
+      dueDate: new Date(dueDate),
+      status: 'created',
+      description: description || billTitle,
+    }));
+
+    // Bulk insert
+    await Payment.insertMany(newBills);
+
+    res.status(201).json({
+      message: 'Bills generated successfully',
+      totalCreated: newBills.length,
+      skippedDuplicates,
+      month: month.trim(),
+      amountPerResident: Number(amount),
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error while generating bulk bills' });
+  }
+};
+
+module.exports = { createOrder, verifyPayment, generateBill, generateBulkBills, getBills, handleRazorpayWebhook };

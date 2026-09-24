@@ -12,7 +12,8 @@ import {
   AlertTriangle,
   Plus,
   X,
-  FileText
+  FileText,
+  Users
 } from 'lucide-react';
 import axiosInstance from '../api/axiosInstance';
 import { useAuth } from '../context/AuthContext';
@@ -35,12 +36,14 @@ const Payments = () => {
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
   const [residents, setResidents] = useState([]);
   const [residentsLoading, setResidentsLoading] = useState(false);
+  const [billMode, setBillMode] = useState('individual'); // 'individual' | 'bulk'
   const [generateFormData, setGenerateFormData] = useState({
     residentId: '',
     unitNumber: '',
     amount: '',
     month: '',
     dueDate: '',
+    description: '',
   });
   const [generateFormErrors, setGenerateFormErrors] = useState({});
   const [generateSubmitLoading, setGenerateSubmitLoading] = useState(false);
@@ -76,6 +79,9 @@ const Payments = () => {
     }
   };
 
+  // Active residents count for bulk banner
+  const activeResidentsCount = residents.filter((r) => r.status === 'active').length;
+
   // Open Generate Modal with auto-filled default month and due date
   const handleOpenGenerateModal = () => {
     const now = new Date();
@@ -90,9 +96,11 @@ const Payments = () => {
       amount: '',
       month: defaultMonth,
       dueDate: defaultDueDate,
+      description: '',
     });
     setGenerateFormErrors({});
     setGenerateSubmitError('');
+    setBillMode('individual');
     setIsGenerateModalOpen(true);
 
     if (residents.length === 0) {
@@ -119,12 +127,16 @@ const Payments = () => {
 
   const validateGenerateForm = () => {
     const errors = {};
-    if (!generateFormData.residentId) {
-      errors.residentId = 'Please select a resident';
+
+    if (billMode === 'individual') {
+      if (!generateFormData.residentId) {
+        errors.residentId = 'Please select a resident';
+      }
+      if (!generateFormData.unitNumber.trim()) {
+        errors.unitNumber = 'Unit number is required';
+      }
     }
-    if (!generateFormData.unitNumber.trim()) {
-      errors.unitNumber = 'Unit number is required';
-    }
+
     const numAmount = Number(generateFormData.amount);
     if (!generateFormData.amount || isNaN(numAmount) || numAmount <= 0) {
       errors.amount = 'Please enter a valid amount in Rupees (greater than ₹0)';
@@ -146,22 +158,45 @@ const Payments = () => {
 
     setGenerateSubmitLoading(true);
     try {
-      const payload = {
-        residentId: generateFormData.residentId,
-        amount: Number(generateFormData.amount),
-        unitNumber: generateFormData.unitNumber.trim(),
-        month: generateFormData.month.trim(),
-        dueDate: generateFormData.dueDate,
-      };
+      if (billMode === 'bulk') {
+        // Bulk bill generation for all active residents
+        const payload = {
+          title: `Maintenance - ${generateFormData.month.trim()}`,
+          month: generateFormData.month.trim(),
+          amount: Number(generateFormData.amount),
+          dueDate: generateFormData.dueDate,
+          description: generateFormData.description.trim() || undefined,
+        };
 
-      await axiosInstance.post('/payments/generate-bill', payload);
+        const response = await axiosInstance.post('/payments/generate-bulk-bills', payload);
+        const { totalCreated, skippedDuplicates } = response.data;
 
-      setIsGenerateModalOpen(false);
-      setNotification({
-        type: 'success',
-        message: `Maintenance bill generated successfully for Unit ${payload.unitNumber} (${payload.month})!`,
-      });
-      fetchBills();
+        setIsGenerateModalOpen(false);
+        let successMsg = `${totalCreated} maintenance bill(s) generated successfully for ${generateFormData.month.trim()}!`;
+        if (skippedDuplicates > 0) {
+          successMsg += ` (${skippedDuplicates} duplicate(s) skipped)`;
+        }
+        setNotification({ type: 'success', message: successMsg });
+        fetchBills();
+      } else {
+        // Individual bill generation (existing flow)
+        const payload = {
+          residentId: generateFormData.residentId,
+          amount: Number(generateFormData.amount),
+          unitNumber: generateFormData.unitNumber.trim(),
+          month: generateFormData.month.trim(),
+          dueDate: generateFormData.dueDate,
+        };
+
+        await axiosInstance.post('/payments/generate-bill', payload);
+
+        setIsGenerateModalOpen(false);
+        setNotification({
+          type: 'success',
+          message: `Maintenance bill generated successfully for Unit ${payload.unitNumber} (${payload.month})!`,
+        });
+        fetchBills();
+      }
     } catch (err) {
       console.error(err);
       setGenerateSubmitError(
@@ -709,7 +744,11 @@ const Payments = () => {
                 </div>
                 <div>
                   <h3 className="text-lg font-bold text-charcoal">Generate Maintenance Bill</h3>
-                  <p className="text-xs text-slate">Issue a monthly maintenance bill to a society resident.</p>
+                  <p className="text-xs text-slate">
+                    {billMode === 'bulk'
+                      ? 'Issue monthly bills for all active society residents at once.'
+                      : 'Issue a monthly maintenance bill to a society resident.'}
+                  </p>
                 </div>
               </div>
               <button
@@ -731,60 +770,118 @@ const Payments = () => {
                   </div>
                 )}
 
-                {/* Resident Dropdown */}
+                {/* Bill Mode Toggle */}
                 <div>
-                  <label htmlFor="bill-resident" className="block text-sm font-medium text-charcoal mb-1">
-                    Select Resident <span className="text-error">*</span>
-                  </label>
-                  <select
-                    id="bill-resident"
-                    value={generateFormData.residentId}
-                    onChange={handleResidentChange}
-                    disabled={generateSubmitLoading || residentsLoading}
-                    className={`w-full h-11 px-3.5 py-2.5 bg-white border rounded-lg text-charcoal focus:outline-none focus:ring-2 focus:ring-[#0F172A]/20 focus:border-[#0F172A] transition-colors cursor-pointer ${
-                      generateFormErrors.residentId ? 'border-error' : 'border-border'
-                    }`}
-                  >
-                    <option value="">
-                      {residentsLoading ? 'Loading residents list...' : '-- Choose a resident --'}
-                    </option>
-                    {residents.map((r) => (
-                      <option key={r._id} value={r._id}>
-                        {r.name} {r.unitNumber ? `(Unit: ${r.unitNumber})` : '(No Unit Assigned)'} — {r.email}
-                      </option>
-                    ))}
-                  </select>
-                  {generateFormErrors.residentId && (
-                    <p className="mt-1 text-xs text-error font-medium">{generateFormErrors.residentId}</p>
-                  )}
+                  <label className="block text-sm font-medium text-charcoal mb-2">Bill Type</label>
+                  <div className="flex p-1 bg-slate-100 rounded-lg border border-border/50">
+                    <button
+                      type="button"
+                      onClick={() => setBillMode('individual')}
+                      className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 text-xs font-semibold rounded-md transition-all cursor-pointer ${
+                        billMode === 'individual'
+                          ? 'bg-[#0F172A] text-[#D4AF37] shadow-sm'
+                          : 'text-slate hover:text-charcoal hover:bg-white/60'
+                      }`}
+                    >
+                      <FileText className="w-3.5 h-3.5" />
+                      <span>Individual Resident</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBillMode('bulk')}
+                      className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 text-xs font-semibold rounded-md transition-all cursor-pointer ${
+                        billMode === 'bulk'
+                          ? 'bg-[#0F172A] text-[#D4AF37] shadow-sm'
+                          : 'text-slate hover:text-charcoal hover:bg-white/60'
+                      }`}
+                    >
+                      <Users className="w-3.5 h-3.5" />
+                      <span>All Active Residents</span>
+                    </button>
+                  </div>
                 </div>
 
-                {/* Unit Number & Amount in 2 columns */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Bulk Mode Info Banner */}
+                {billMode === 'bulk' && (
+                  <div className="p-3.5 bg-blue-50 border border-blue-200 rounded-lg flex items-start gap-2.5">
+                    <Users className="w-4.5 h-4.5 text-blue-600 shrink-0 mt-0.5" />
+                    <div className="text-xs text-blue-800">
+                      <p className="font-semibold mb-0.5">Bulk Bill Generation</p>
+                      <p>
+                        This will generate a bill of{' '}
+                        <span className="font-bold">
+                          ₹{generateFormData.amount ? Number(generateFormData.amount).toLocaleString('en-IN') : '—'}
+                        </span>{' '}
+                        for{' '}
+                        <span className="font-bold">
+                          {residentsLoading ? '...' : activeResidentsCount}
+                        </span>{' '}
+                        active resident(s) for{' '}
+                        <span className="font-bold">{generateFormData.month || '—'}</span>.
+                        Residents who already have a bill for this month will be automatically skipped.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Resident Dropdown — only for individual mode */}
+                {billMode === 'individual' && (
                   <div>
-                    <label htmlFor="bill-unit" className="block text-sm font-medium text-charcoal mb-1">
-                      Unit Number <span className="text-error">*</span>
+                    <label htmlFor="bill-resident" className="block text-sm font-medium text-charcoal mb-1">
+                      Select Resident <span className="text-error">*</span>
                     </label>
-                    <input
-                      id="bill-unit"
-                      type="text"
-                      placeholder="e.g. A-101"
-                      value={generateFormData.unitNumber}
-                      onChange={(e) => {
-                        setGenerateFormData({ ...generateFormData, unitNumber: e.target.value });
-                        if (generateFormErrors.unitNumber) {
-                          setGenerateFormErrors({ ...generateFormErrors, unitNumber: '' });
-                        }
-                      }}
-                      disabled={generateSubmitLoading}
-                      className={`w-full h-11 px-3.5 py-2.5 bg-white border rounded-lg text-charcoal placeholder-slate/40 focus:outline-none focus:ring-2 focus:ring-[#0F172A]/20 focus:border-[#0F172A] transition-colors ${
-                        generateFormErrors.unitNumber ? 'border-error' : 'border-border'
+                    <select
+                      id="bill-resident"
+                      value={generateFormData.residentId}
+                      onChange={handleResidentChange}
+                      disabled={generateSubmitLoading || residentsLoading}
+                      className={`w-full h-11 px-3.5 py-2.5 bg-white border rounded-lg text-charcoal focus:outline-none focus:ring-2 focus:ring-[#0F172A]/20 focus:border-[#0F172A] transition-colors cursor-pointer ${
+                        generateFormErrors.residentId ? 'border-error' : 'border-border'
                       }`}
-                    />
-                    {generateFormErrors.unitNumber && (
-                      <p className="mt-1 text-xs text-error font-medium">{generateFormErrors.unitNumber}</p>
+                    >
+                      <option value="">
+                        {residentsLoading ? 'Loading residents list...' : '-- Choose a resident --'}
+                      </option>
+                      {residents.map((r) => (
+                        <option key={r._id} value={r._id}>
+                          {r.name} {r.unitNumber ? `(Unit: ${r.unitNumber})` : '(No Unit Assigned)'} — {r.email}
+                        </option>
+                      ))}
+                    </select>
+                    {generateFormErrors.residentId && (
+                      <p className="mt-1 text-xs text-error font-medium">{generateFormErrors.residentId}</p>
                     )}
                   </div>
+                )}
+
+                {/* Unit Number & Amount in 2 columns */}
+                <div className={`grid gap-4 ${billMode === 'individual' ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
+                  {billMode === 'individual' && (
+                    <div>
+                      <label htmlFor="bill-unit" className="block text-sm font-medium text-charcoal mb-1">
+                        Unit Number <span className="text-error">*</span>
+                      </label>
+                      <input
+                        id="bill-unit"
+                        type="text"
+                        placeholder="e.g. A-101"
+                        value={generateFormData.unitNumber}
+                        onChange={(e) => {
+                          setGenerateFormData({ ...generateFormData, unitNumber: e.target.value });
+                          if (generateFormErrors.unitNumber) {
+                            setGenerateFormErrors({ ...generateFormErrors, unitNumber: '' });
+                          }
+                        }}
+                        disabled={generateSubmitLoading}
+                        className={`w-full h-11 px-3.5 py-2.5 bg-white border rounded-lg text-charcoal placeholder-slate/40 focus:outline-none focus:ring-2 focus:ring-[#0F172A]/20 focus:border-[#0F172A] transition-colors ${
+                          generateFormErrors.unitNumber ? 'border-error' : 'border-border'
+                        }`}
+                      />
+                      {generateFormErrors.unitNumber && (
+                        <p className="mt-1 text-xs text-error font-medium">{generateFormErrors.unitNumber}</p>
+                      )}
+                    </div>
+                  )}
 
                   <div>
                     <label htmlFor="bill-amount" className="block text-sm font-medium text-charcoal mb-1">
@@ -870,6 +967,26 @@ const Payments = () => {
                     )}
                   </div>
                 </div>
+
+                {/* Optional Description (shown in bulk mode) */}
+                {billMode === 'bulk' && (
+                  <div>
+                    <label htmlFor="bill-description" className="block text-sm font-medium text-charcoal mb-1">
+                      Notes <span className="text-slate font-normal">(optional)</span>
+                    </label>
+                    <input
+                      id="bill-description"
+                      type="text"
+                      placeholder="e.g. Monthly maintenance charges including water & security"
+                      value={generateFormData.description}
+                      onChange={(e) =>
+                        setGenerateFormData({ ...generateFormData, description: e.target.value })
+                      }
+                      disabled={generateSubmitLoading}
+                      className="w-full h-11 px-3.5 py-2.5 bg-white border border-border rounded-lg text-charcoal placeholder-slate/40 focus:outline-none focus:ring-2 focus:ring-[#0F172A]/20 focus:border-[#0F172A] transition-colors"
+                    />
+                  </div>
+                )}
               </div>
 
               {/* Modal Footer */}
@@ -897,8 +1014,8 @@ const Payments = () => {
                     </>
                   ) : (
                     <>
-                      <Plus className="w-4 h-4" />
-                      <span>Generate Bill</span>
+                      {billMode === 'bulk' ? <Users className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                      <span>{billMode === 'bulk' ? 'Generate All Bills' : 'Generate Bill'}</span>
                     </>
                   )}
                 </button>
