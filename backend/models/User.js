@@ -42,6 +42,31 @@ const userSchema = new mongoose.Schema({
   unitNumber: {
     type: String,
   },
+  sqftArea: {
+    type: Number,
+    default: 850,
+  },
+  billingType: {
+    type: String,
+    enum: ['fixed', 'sqft_based'],
+    default: 'fixed',
+  },
+  fixedRate: {
+    type: Number,
+    default: 2500,
+  },
+  ratePerSqft: {
+    type: Number,
+    default: 3.5,
+  },
+  parkingCharges: {
+    type: Number,
+    default: 300,
+  },
+  waterCharges: {
+    type: Number,
+    default: 200,
+  },
   customRateItems: {
     type: [{
       name: { type: String, required: true },

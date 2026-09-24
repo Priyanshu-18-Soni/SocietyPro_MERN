@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { 
@@ -14,10 +14,42 @@ import {
 import axiosInstance from '../api/axiosInstance';
 
 const PendingApproval = () => {
-  const { user, logout } = useAuth();
+  const { user, login, logout } = useAuth();
   const navigate = useNavigate();
   const [checking, setChecking] = useState(false);
   const [checkMessage, setCheckMessage] = useState('');
+
+  // 4-second reactive polling hook calling GET /api/auth/check-status
+  useEffect(() => {
+    let isMounted = true;
+
+    const pollStatus = async () => {
+      try {
+        const response = await axiosInstance.get('/auth/check-status');
+        if (!isMounted) return;
+        const { status, token: freshToken, user: updatedUser } = response.data;
+
+        if (status === 'active') {
+          const currentToken = localStorage.getItem('token');
+          const tokenToUse = freshToken || currentToken;
+          login(tokenToUse, updatedUser);
+          setCheckMessage('Account approved! Redirecting to dashboard...');
+          navigate('/dashboard');
+        }
+      } catch (err) {
+        if (err.response?.status === 401) {
+          logout();
+          navigate('/login');
+        }
+      }
+    };
+
+    const intervalId = setInterval(pollStatus, 4000);
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+    };
+  }, [login, logout, navigate]);
 
   const handleSignOut = () => {
     logout();
@@ -28,18 +60,21 @@ const PendingApproval = () => {
     setChecking(true);
     setCheckMessage('');
     try {
-      // Test with a lightweight protected request to see if status changed from inactive to active
-      await axiosInstance.get('/payments/dashboard');
-      // If request succeeds without 403 ACCOUNT_INACTIVE, resident is approved!
-      setCheckMessage('Account approved! Redirecting to dashboard...');
-      setTimeout(() => {
-        navigate('/');
-      }, 1000);
-    } catch (err) {
-      if (err.response?.data?.code === 'ACCOUNT_INACTIVE') {
+      const response = await axiosInstance.get('/auth/check-status');
+      const { status, token: freshToken, user: updatedUser } = response.data;
+      if (status === 'active') {
+        const currentToken = localStorage.getItem('token');
+        const tokenToUse = freshToken || currentToken;
+        login(tokenToUse, updatedUser);
+        setCheckMessage('Account approved! Redirecting to dashboard...');
+        setTimeout(() => {
+          navigate('/dashboard');
+        }, 800);
+      } else {
         setCheckMessage('Status: Still awaiting committee approval. Please check back later.');
-      } else if (err.response?.status === 401) {
-        // Token invalid or expired
+      }
+    } catch (err) {
+      if (err.response?.status === 401) {
         logout();
         navigate('/login');
       } else {

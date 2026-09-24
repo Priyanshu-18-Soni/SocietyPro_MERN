@@ -76,6 +76,7 @@ Dependency bloat, conflicting packages, and unapproved frameworks compromise sys
 | **Client-Side Routing** | `react-router-dom` | `^7.18.1` | Client routing, route protection, layout nesting |
 | **HTTP Client** | `axios` | `^1.18.1` | REST API calls, request/response interceptors for JWT injection |
 | **Iconography** | `lucide-react` | `^1.28.0` | Consistent, accessible, tree-shakable SVG icon suite |
+| **PDF Generation** | `jspdf` | `^4.0.0` | Client-side vector generation of branded invoice receipts |
 
 #### Strictly Disallowed Frontend Libraries
 
@@ -337,6 +338,15 @@ export const formatINR = (paise) => {
 > * Explicitly convert legacy rate amounts to Paise via `toPaise(rate.amount)` before performing billing calculations.
 > * Never introduce new models or fields storing Rupee floats.
 
+### 5.6 Automated Rate Engine & Batch Billing Invariant
+
+1. **Non-Negative Values**: All unit configurations (`sqftArea`, `ratePerSqft`, `fixedRate`, `parkingCharges`, `waterCharges`) must be non-negative numbers.
+2. **Formula Integrity**: The base maintenance calculation must strictly evaluate:
+   $$\text{Base} = (\text{billingType} === \text{'sqft\_based'}) \,?\, (\text{sqftArea} \times \text{ratePerSqft}) : \text{fixedRate}$$
+   $$\text{Total} = \text{Base} + \text{parkingCharges} + \text{waterCharges}$$
+3. **Paise Boundary Enforcement**: The final total must immediately be converted into Paise via integer rounding (`Math.round(total * 100)`) before saving to `Payment.amount` or generating payment gateway orders.
+4. **Batch Operation Tenancy**: In `generateBulkBills`, the batch invoice query must filter strictly by `{ societyId: req.user.societyId, role: 'Resident', status: 'active' }`. No inactive, pending, or cross-tenant accounts may receive bills.
+
 ---
 
 ## 6. Error Handling & Standardized API Response Contracts
@@ -558,6 +568,40 @@ exports.requirePermission = (permissionKey) => {
      });
    }
    ```
+
+### 7.5 Ticket Creator Settlement Verdict Invariant
+
+1. **Exclusivity**: Only the original resident who raised a grievance ticket (`String(complaint.createdBy) === String(req.user.id)`) possesses authority to submit a resolution verdict (`PATCH /api/complaints/:id/verdict`).
+2. **Deterministic Auto-Transitions**:
+   - Setting `verdict = 'confirmed'` triggers automatic status closure (`status = 'closed'`).
+   - Setting `verdict = 'reopened'` triggers automatic status reopening (`status = 'open'`).
+3. **Immutability of Closed Verdicts**: Once a ticket is marked `'confirmed'`, it cannot be altered by committee members or unauthorized third parties.
+
+### 7.6 Gatekeeper Polling & Token Refresh Lifecycle
+
+1. **Stateless Status Check**: The endpoint `GET /api/auth/check-status` must be protected by `tenantMiddleware` and query live database status.
+2. **Fresh JWT Issuance**: Upon transitioning to `status: 'active'`, the server MUST issue a freshly minted JWT containing updated active claims and return it alongside the updated user object.
+3. **Client Silent Refresh**: The frontend polling hook (`PendingApproval.jsx`) must update `localStorage` and `AuthContext` state immediately with the new token before clearing the polling timer and routing to `/dashboard`.
+
+### 7.7 Notice Pinning & Tri-Level Sort Invariant
+
+1. **Personal Scoping**: Pinned notice state is per-resident. Toggling pins modifies the `pinnedBy: [User ObjectId]` array using atomic `$addToSet` or `$pull`.
+2. **Tri-Level Sort Hierarchy**: All notice list queries must sort records strictly in this order:
+   1. `isPriority: true` (Society-wide emergency announcements)
+   2. Personally Pinned (`pinnedBy` includes current user ID)
+   3. `createdAt: -1` (Recency)
+
+### 7.8 Continuous Documentation Parity Invariant
+
+Every sprint, feature addition, or schema refactoring MUST update all 6 core documentation blueprint files concurrently:
+1. `PRD.md`: Requirements, features, user personas, and data models.
+2. `Architecture.md`: System diagrams, middleware matrix, schemas, and API lifecycles.
+3. `Design.md`: UI components, design tokens, modals, and interaction states.
+4. `Memory.md`: Sprint logs, API contracts, edge case defenses, and test results.
+5. `Phases.md` / `Phase.md`: Milestone progress tracking and task completion matrices.
+6. `Rules.md`: Non-negotiable architectural rules, dependency governance, and invariants.
+
+No code changes may be submitted with unresolved documentation drift.
 
 ---
 

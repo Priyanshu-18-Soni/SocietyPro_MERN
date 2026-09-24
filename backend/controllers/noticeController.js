@@ -1,11 +1,28 @@
 const Notice = require('../models/Notice');
 
-// Get all notices for the tenant, sorted with priority first
+// Get all notices for the tenant: Sort Priority first -> Personally pinned second -> Recent third
 const getNotices = async (req, res) => {
   try {
     const notices = await Notice.find({ societyId: req.user.societyId })
-      .populate('createdBy', 'name email role')
-      .sort({ isPriority: -1, createdAt: -1 });
+      .populate('createdBy', 'name email role');
+
+    const userIdStr = req.user.id?.toString();
+
+    // Sort: Priority notices first -> Personally pinned notices second -> Recent notices third
+    notices.sort((a, b) => {
+      // 1. Priority notices first
+      if (Boolean(b.isPriority) !== Boolean(a.isPriority)) {
+        return b.isPriority ? 1 : -1;
+      }
+      // 2. Personally pinned notices second
+      const aPinned = a.pinnedBy?.some((uid) => uid.toString() === userIdStr) || false;
+      const bPinned = b.pinnedBy?.some((uid) => uid.toString() === userIdStr) || false;
+      if (bPinned !== aPinned) {
+        return bPinned ? 1 : -1;
+      }
+      // 3. Recent notices third
+      return new Date(b.createdAt) - new Date(a.createdAt);
+    });
 
     res.status(200).json({ notices });
   } catch (err) {

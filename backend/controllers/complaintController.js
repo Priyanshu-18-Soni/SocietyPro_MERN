@@ -56,24 +56,42 @@ const getComplaints = async (req, res) => {
   }
 };
 
-// Upvote an existing complaint by adding the resident's flat number to affectedFlats
+// Upvote an existing complaint (toggle user ID in upvotedBy, update upvoteCount and affectedFlats)
 const upvoteComplaint = async (req, res) => {
   try {
     const { id } = req.params;
+    const userId = req.user.id;
     const voterFlat = req.user.flatNo || req.user.unitNumber || req.body.flatNo || 'Resident';
 
-    const complaint = await Complaint.findOneAndUpdate(
-      { _id: id, societyId: req.user.societyId },
-      { $addToSet: { affectedFlats: voterFlat } },
-      { returnDocument: 'after' }
-    ).populate('createdBy', 'name email unitNumber role');
-
+    const complaint = await Complaint.findOne({ _id: id, societyId: req.user.societyId });
     if (!complaint) {
       return res.status(404).json({ message: 'Resource not found' });
     }
 
+    const hasUpvoted = complaint.upvotedBy && complaint.upvotedBy.some((uid) => uid.toString() === userId.toString());
+
+    if (hasUpvoted) {
+      complaint.upvotedBy = complaint.upvotedBy.filter((uid) => uid.toString() !== userId.toString());
+      complaint.upvoteCount = Math.max(0, (complaint.upvoteCount || 1) - 1);
+      // Remove flat if no other upvote from this flat
+      if (complaint.affectedFlats) {
+        complaint.affectedFlats = complaint.affectedFlats.filter((f) => f !== voterFlat);
+      }
+    } else {
+      if (!complaint.upvotedBy) complaint.upvotedBy = [];
+      complaint.upvotedBy.push(userId);
+      complaint.upvoteCount = (complaint.upvoteCount || 0) + 1;
+      if (!complaint.affectedFlats) complaint.affectedFlats = [];
+      if (!complaint.affectedFlats.includes(voterFlat)) {
+        complaint.affectedFlats.push(voterFlat);
+      }
+    }
+
+    await complaint.save();
+    await complaint.populate('createdBy', 'name email unitNumber role');
+
     res.status(200).json({
-      message: 'Complaint upvoted successfully',
+      message: hasUpvoted ? 'Upvote removed' : 'Complaint upvoted successfully',
       complaint,
     });
   } catch (err) {

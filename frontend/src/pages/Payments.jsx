@@ -13,8 +13,10 @@ import {
   Plus,
   X,
   FileText,
-  Users
+  Users,
+  Download
 } from 'lucide-react';
+import { jsPDF } from 'jspdf';
 import axiosInstance from '../api/axiosInstance';
 import { useAuth } from '../context/AuthContext';
 
@@ -108,19 +110,31 @@ const Payments = () => {
     }
   };
 
+  // Compute dynamic maintenance amount for a resident (in Rupees)
+  const computeResidentRate = (resident) => {
+    if (!resident) return 2500;
+    const base = resident.billingType === 'sqft_based'
+      ? (resident.sqftArea || 850) * (resident.ratePerSqft || 3.5)
+      : (resident.fixedRate || 2500);
+    return Math.round(base + (resident.parkingCharges || 0) + (resident.waterCharges || 0));
+  };
+
   const handleResidentChange = (e) => {
     const selectedId = e.target.value;
     const selected = residents.find((r) => r._id === selectedId);
+    const computedAmt = selected ? computeResidentRate(selected) : '';
     setGenerateFormData((prev) => ({
       ...prev,
       residentId: selectedId,
       unitNumber: selected?.unitNumber || '',
+      amount: computedAmt ? String(computedAmt) : prev.amount,
     }));
-    if (generateFormErrors.residentId || generateFormErrors.unitNumber) {
+    if (generateFormErrors.residentId || generateFormErrors.unitNumber || generateFormErrors.amount) {
       setGenerateFormErrors((prev) => ({
         ...prev,
         residentId: '',
         unitNumber: '',
+        amount: '',
       }));
     }
   };
@@ -135,12 +149,12 @@ const Payments = () => {
       if (!generateFormData.unitNumber.trim()) {
         errors.unitNumber = 'Unit number is required';
       }
+      const numAmount = Number(generateFormData.amount);
+      if (!generateFormData.amount || isNaN(numAmount) || numAmount <= 0) {
+        errors.amount = 'Please enter a valid amount in Rupees (greater than ₹0)';
+      }
     }
 
-    const numAmount = Number(generateFormData.amount);
-    if (!generateFormData.amount || isNaN(numAmount) || numAmount <= 0) {
-      errors.amount = 'Please enter a valid amount in Rupees (greater than ₹0)';
-    }
     if (!generateFormData.month.trim()) {
       errors.month = 'Billing month is required';
     }
@@ -159,11 +173,10 @@ const Payments = () => {
     setGenerateSubmitLoading(true);
     try {
       if (billMode === 'bulk') {
-        // Bulk bill generation for all active residents
+        // Bulk bill generation for all active residents (auto-computed rates per resident)
         const payload = {
           title: `Maintenance - ${generateFormData.month.trim()}`,
           month: generateFormData.month.trim(),
-          amount: Number(generateFormData.amount),
           dueDate: generateFormData.dueDate,
           description: generateFormData.description.trim() || undefined,
         };
@@ -179,7 +192,7 @@ const Payments = () => {
         setNotification({ type: 'success', message: successMsg });
         fetchBills();
       } else {
-        // Individual bill generation (existing flow)
+        // Individual bill generation (auto-computed with manual override allowed)
         const payload = {
           residentId: generateFormData.residentId,
           amount: Number(generateFormData.amount),
@@ -204,6 +217,207 @@ const Payments = () => {
       );
     } finally {
       setGenerateSubmitLoading(false);
+    }
+  };
+
+  // Client-Side Branded Maintenance Invoice PDF Receipt Generation
+  const downloadReceiptPDF = (bill) => {
+    try {
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+      });
+
+      const societyName = bill.societyId?.name || user?.societyName || 'SocietyPro Cooperative Housing Society';
+      const societyCode = bill.societyId?.societyCode || user?.societyCode || 'SP-SOC';
+      const societyCity = bill.societyId?.city || 'Mumbai';
+      const societyAddress = bill.societyId?.address || 'Society Complex';
+
+      const residentName = bill.residentId?.name || (user?.role === 'Resident' ? user?.name : 'Resident');
+      const unitNumber = bill.unitNumber || bill.residentId?.unitNumber || 'N/A';
+      const residentEmail = bill.residentId?.email || (user?.role === 'Resident' ? user?.email : 'resident@societypro.com');
+
+      const receiptId = `RCPT-${bill._id.toString().slice(-8).toUpperCase()}`;
+      const month = bill.month || 'Current Month';
+      const issueDate = bill.createdAt ? new Date(bill.createdAt).toLocaleDateString('en-IN') : 'N/A';
+      const paymentDate = bill.updatedAt ? new Date(bill.updatedAt).toLocaleDateString('en-IN') : new Date().toLocaleDateString('en-IN');
+      const txnRef = bill.razorpayPaymentId || bill.razorpayOrderId || bill._id;
+
+      const baseAmountINR = bill.amount / 100;
+      const lateFeeINR = (bill.lateFee || 0) / 100;
+      const totalAmountINR = (bill.amount + (bill.lateFee || 0)) / 100;
+
+      // Header Banner (Navy #0F172A)
+      doc.setFillColor(15, 23, 42);
+      doc.rect(0, 0, 210, 42, 'F');
+
+      // Accent Gold Stripe (#D4AF37)
+      doc.setFillColor(212, 175, 55);
+      doc.rect(0, 42, 210, 3, 'F');
+
+      // Header Text
+      doc.setTextColor(212, 175, 55);
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'bold');
+      doc.text('SOCIETYPRO HOUSING MANAGEMENT PLATFORM', 14, 14);
+
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(16);
+      doc.setFont('helvetica', 'bold');
+      doc.text(societyName.toUpperCase(), 14, 24);
+
+      doc.setFontSize(8.5);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(203, 213, 225);
+      doc.text(`${societyAddress}, ${societyCity}  |  Society Join Code: ${societyCode}`, 14, 32);
+
+      // Title Section
+      doc.setTextColor(15, 23, 42);
+      doc.setFontSize(15);
+      doc.setFont('helvetica', 'bold');
+      doc.text('MAINTENANCE INVOICE & RECEIPT', 14, 56);
+
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(100, 116, 139);
+      doc.text('Official computer-generated receipt for society maintenance dues.', 14, 62);
+
+      // 2 Information Cards
+      doc.setFillColor(248, 250, 252);
+      doc.setDrawColor(226, 232, 240);
+      doc.roundedRect(14, 68, 88, 44, 2, 2, 'FD');
+      doc.roundedRect(108, 68, 88, 44, 2, 2, 'FD');
+
+      // Left Box: Receipt Identifiers
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(71, 85, 105);
+      doc.text('RECEIPT IDENTIFIERS', 18, 75);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(30, 41, 59);
+      doc.text('Receipt ID:', 18, 83);
+      doc.setFont('helvetica', 'bold');
+      doc.text(receiptId, 50, 83);
+
+      doc.setFont('helvetica', 'normal');
+      doc.text('Billing Month:', 18, 91);
+      doc.setFont('helvetica', 'bold');
+      doc.text(month, 50, 91);
+
+      doc.setFont('helvetica', 'normal');
+      doc.text('Issued Date:', 18, 99);
+      doc.text(issueDate, 50, 99);
+
+      doc.text('Payment Date:', 18, 107);
+      doc.text(paymentDate, 50, 107);
+
+      // Right Box: Resident Information
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(71, 85, 105);
+      doc.text('RESIDENT DETAILS', 112, 75);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(30, 41, 59);
+      doc.text('Resident Name:', 112, 83);
+      doc.setFont('helvetica', 'bold');
+      doc.text(residentName.slice(0, 26), 145, 83);
+
+      doc.setFont('helvetica', 'normal');
+      doc.text('Unit / Flat:', 112, 91);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`Unit ${unitNumber}`, 145, 91);
+
+      doc.setFont('helvetica', 'normal');
+      doc.text('Email Address:', 112, 99);
+      doc.text(residentEmail.slice(0, 24), 145, 99);
+
+      doc.text('Status:', 112, 107);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(16, 185, 129);
+      doc.text('SETTLED / PAID', 145, 107);
+
+      // Itemized Table Header
+      doc.setFillColor(15, 23, 42);
+      doc.rect(14, 122, 182, 9, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'bold');
+      doc.text('ITEMIZED DESCRIPTION', 18, 128);
+      doc.text('AMOUNT (INR)', 160, 128);
+
+      // Rows
+      doc.setTextColor(30, 41, 59);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Maintenance Assessment (${month})`, 18, 138);
+      doc.text(`INR ${baseAmountINR.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, 160, 138);
+
+      doc.text('Society Common Amenities & Utilities', 18, 146);
+      doc.text('Included in Base', 160, 146);
+
+      let currentY = 154;
+      if (lateFeeINR > 0) {
+        doc.text('Accrued Late Payment Penalty', 18, currentY);
+        doc.text(`INR ${lateFeeINR.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, 160, currentY);
+        currentY += 8;
+      }
+
+      // Divider Line
+      doc.setDrawColor(203, 213, 225);
+      doc.line(14, currentY, 196, currentY);
+      currentY += 8;
+
+      // Total Line
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.setTextColor(15, 23, 42);
+      doc.text('TOTAL AMOUNT PAID', 18, currentY);
+      doc.setTextColor(16, 185, 129);
+      doc.text(`INR ${totalAmountINR.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, 160, currentY);
+      currentY += 12;
+
+      // Official "PAID" Stamp Badge Box
+      doc.setFillColor(240, 253, 244);
+      doc.setDrawColor(16, 185, 129);
+      doc.setLineWidth(0.7);
+      doc.roundedRect(14, currentY, 182, 34, 2.5, 2.5, 'FD');
+
+      doc.setTextColor(16, 185, 129);
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.text('PAID - OFFICIAL SETTLEMENT RECORD', 20, currentY + 9);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      doc.setTextColor(51, 65, 85);
+      doc.text(`Transaction Reference: ${txnRef}`, 20, currentY + 16);
+      doc.text('Payment Gateway: Razorpay Electronic Funds Transfer', 20, currentY + 22);
+      doc.text(`Timestamp: ${paymentDate} (Verified)`, 20, currentY + 28);
+
+      // Footer
+      doc.setFontSize(8);
+      doc.setTextColor(148, 163, 184);
+      doc.setFont('helvetica', 'normal');
+      doc.text('This is a verified computer-generated receipt issued by SocietyPro. No physical signature required.', 14, 280);
+      doc.text('SocietyPro Housing Management Platform © 2026. All rights reserved.', 14, 285);
+
+      const fileName = `Receipt_${unitNumber.replace(/\s+/g, '_')}_${month.replace(/\s+/g, '_')}.pdf`;
+      doc.save(fileName);
+
+      setNotification({
+        type: 'success',
+        message: `PDF receipt downloaded for Unit ${unitNumber} (${month})!`,
+      });
+    } catch (pdfErr) {
+      console.error('Error generating PDF receipt:', pdfErr);
+      setNotification({
+        type: 'error',
+        message: 'Failed to generate PDF receipt. Please try again.',
+      });
     }
   };
 
@@ -671,10 +885,23 @@ const Payments = () => {
                     )}
 
                     {isPaid && (
-                      <span className="h-10 px-4 bg-emerald-50 text-success text-xs font-bold rounded-lg border border-success/20 flex items-center gap-1.5 shadow-2xs shrink-0 select-none">
-                        <Check className="h-4 w-4" />
-                        <span>Settled</span>
-                      </span>
+                      <div className="flex items-center space-x-1.5 shrink-0">
+                        <span className="h-10 px-3.5 bg-emerald-50 text-success text-xs font-bold rounded-lg border border-success/20 flex items-center gap-1.5 shadow-2xs select-none">
+                          <Check className="h-4 w-4" />
+                          <span>Settled</span>
+                        </span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            downloadReceiptPDF(bill);
+                          }}
+                          className="h-10 px-3 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
+                          title="Download Official PDF Receipt"
+                        >
+                          <Download className="h-4 w-4" />
+                          <span>Receipt</span>
+                        </button>
+                      </div>
                     )}
 
                     {/* Options Menu */}
@@ -691,7 +918,20 @@ const Payments = () => {
                       </button>
 
                       {activeMenuId === bill._id && (
-                        <div className="absolute right-0 mt-2 w-44 bg-white border border-border rounded-xl shadow-lg z-20 py-1.5 text-left animate-in fade-in zoom-in-95 duration-150">
+                        <div className="absolute right-0 mt-2 w-48 bg-white border border-border rounded-xl shadow-lg z-20 py-1.5 text-left animate-in fade-in zoom-in-95 duration-150">
+                          {isPaid && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                downloadReceiptPDF(bill);
+                                setActiveMenuId(null);
+                              }}
+                              className="w-full px-4 py-2.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 flex items-center gap-2 cursor-pointer border-b border-border/40"
+                            >
+                              <Download className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>Download PDF Receipt</span>
+                            </button>
+                          )}
                           {!isPaid && (
                             <button
                               onClick={(e) => {
@@ -806,13 +1046,9 @@ const Payments = () => {
                   <div className="p-3.5 bg-blue-50 border border-blue-200 rounded-lg flex items-start gap-2.5">
                     <Users className="w-4.5 h-4.5 text-blue-600 shrink-0 mt-0.5" />
                     <div className="text-xs text-blue-800">
-                      <p className="font-semibold mb-0.5">Bulk Bill Generation</p>
+                      <p className="font-semibold mb-0.5">Automated Bulk Maintenance Generation</p>
                       <p>
-                        This will generate a bill of{' '}
-                        <span className="font-bold">
-                          ₹{generateFormData.amount ? Number(generateFormData.amount).toLocaleString('en-IN') : '—'}
-                        </span>{' '}
-                        for{' '}
+                        Generating maintenance bills for{' '}
                         <span className="font-bold">
                           {residentsLoading ? '...' : activeResidentsCount}
                         </span>{' '}
@@ -854,9 +1090,19 @@ const Payments = () => {
                   </div>
                 )}
 
-                {/* Unit Number & Amount in 2 columns */}
-                <div className={`grid gap-4 ${billMode === 'individual' ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
-                  {billMode === 'individual' && (
+                {/* Individual: Unit Number & Amount / Bulk: Dynamic Rate Notice */}
+                {billMode === 'bulk' ? (
+                  <div className="p-4 bg-slate-50 border border-border/80 rounded-xl text-xs text-slate-700 flex items-start gap-2.5">
+                    <AlertCircle className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                    <div className="space-y-0.5">
+                      <p className="font-semibold text-charcoal">Automated Maintenance Rate Engine</p>
+                      <p className="text-slate-600">
+                        Bills will be auto-calculated individually based on each resident's flat area &amp; rate configuration.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label htmlFor="bill-unit" className="block text-sm font-medium text-charcoal mb-1">
                         Unit Number <span className="text-error">*</span>
@@ -881,40 +1127,41 @@ const Payments = () => {
                         <p className="mt-1 text-xs text-error font-medium">{generateFormErrors.unitNumber}</p>
                       )}
                     </div>
-                  )}
 
-                  <div>
-                    <label htmlFor="bill-amount" className="block text-sm font-medium text-charcoal mb-1">
-                      Amount (₹) <span className="text-error">*</span>
-                    </label>
-                    <div className="relative">
-                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate font-semibold text-sm">
-                        ₹
-                      </span>
-                      <input
-                        id="bill-amount"
-                        type="number"
-                        min="1"
-                        step="any"
-                        placeholder="e.g. 1500"
-                        value={generateFormData.amount}
-                        onChange={(e) => {
-                          setGenerateFormData({ ...generateFormData, amount: e.target.value });
-                          if (generateFormErrors.amount) {
-                            setGenerateFormErrors({ ...generateFormErrors, amount: '' });
-                          }
-                        }}
-                        disabled={generateSubmitLoading}
-                        className={`w-full h-11 pl-8 pr-3.5 py-2.5 bg-white border rounded-lg text-charcoal placeholder-slate/40 focus:outline-none focus:ring-2 focus:ring-[#0F172A]/20 focus:border-[#0F172A] transition-colors ${
-                          generateFormErrors.amount ? 'border-error' : 'border-border'
-                        }`}
-                      />
+                    <div>
+                      <label htmlFor="bill-amount" className="block text-sm font-medium text-charcoal mb-1">
+                        Amount (₹) <span className="text-error">*</span>
+                        <span className="text-xs text-slate font-normal ml-1">(Auto-computed)</span>
+                      </label>
+                      <div className="relative">
+                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate font-semibold text-sm">
+                          ₹
+                        </span>
+                        <input
+                          id="bill-amount"
+                          type="number"
+                          min="1"
+                          step="any"
+                          placeholder="e.g. 1500"
+                          value={generateFormData.amount}
+                          onChange={(e) => {
+                            setGenerateFormData({ ...generateFormData, amount: e.target.value });
+                            if (generateFormErrors.amount) {
+                              setGenerateFormErrors({ ...generateFormErrors, amount: '' });
+                            }
+                          }}
+                          disabled={generateSubmitLoading}
+                          className={`w-full h-11 pl-8 pr-3.5 py-2.5 bg-white border rounded-lg text-charcoal placeholder-slate/40 focus:outline-none focus:ring-2 focus:ring-[#0F172A]/20 focus:border-[#0F172A] transition-colors ${
+                            generateFormErrors.amount ? 'border-error' : 'border-border'
+                          }`}
+                        />
+                      </div>
+                      {generateFormErrors.amount && (
+                        <p className="mt-1 text-xs text-error font-medium">{generateFormErrors.amount}</p>
+                      )}
                     </div>
-                    {generateFormErrors.amount && (
-                      <p className="mt-1 text-xs text-error font-medium">{generateFormErrors.amount}</p>
-                    )}
                   </div>
-                </div>
+                )}
 
                 {/* Month & Due Date in 2 columns */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

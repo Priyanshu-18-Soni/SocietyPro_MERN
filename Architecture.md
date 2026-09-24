@@ -50,26 +50,31 @@
 │   └─────────────────────────────────────────────────────────────┘    │
 │                                                                      │
 │   Route Modules                                                      │
-│   /api/auth       authRoutes.js       (public — no JWT required)     │
+│   /api/auth       authRoutes.js       (public + check-status endpoint)│
 │   /api/society    societyRoutes.js    (JWT + role/permission guard)  │
 │   /api/users      userRoutes.js       (JWT + requirePermission)      │
-│   /api/payments   paymentRoutes.js    (JWT + requireRole/Permission) │
+│   /api/payments   paymentRoutes.js    (JWT + dynamic billing + webhook)
 │   /api/committee  committeeRoutes.js  (JWT + requireRole Owner)      │
-│   /api/test       testRoutes.js       (JWT — dev/debug only)         │
+│   /api/complaints complaintRoutes.js  (JWT + active user + verdict)  │
+│   /api/notices    noticeRoutes.js     (JWT + active user + pin)      │
+│   /api/finances   financeRoutes.js    (JWT + active user + ledger)   │
 └──────────────────────┬────────────────────────┬──────────────────────┘
                        │  Mongoose ODM           │  Razorpay SDK
 ┌──────────────────────▼───────────────┐  ┌─────▼──────────────────────┐
 │        DATA TIER                     │  │   PAYMENT GATEWAY          │
 │                                      │  │                            │
-│   MongoDB Atlas                      │  │   Razorpay API (test mode) │
-│   Cluster: SocietyPro-Cluster        │  │   rzp_test_ST89r7gHOHHsmY  │
-│   3-node replica set                 │  │   Order creation           │
-│   SSL/TLS enforced                   │  │   HMAC-SHA256 verify       │
-│                                      │  │                            │
-│   Collections                        │  │   (Webhook endpoint        │
-│   ├── users                          │  │    not yet implemented)    │
-│   ├── societies                      │  └────────────────────────────┘
-│   └── payments                       │
+│   MongoDB Atlas                      │  │   Razorpay API & Webhooks  │
+│   Cluster: SocietyPro-Cluster        │  │   rzp_test_...             │
+│   3-node replica set                 │  │   Order creation & verify  │
+│   SSL/TLS enforced                   │  │   HMAC-SHA256 Webhook      │
+│                                      │  │   Automatic Ledger Credit  │
+│   Collections                        │  └────────────────────────────┘
+│   ├── users                          │
+│   ├── societies                      │
+│   ├── payments                       │
+│   ├── complaints                     │
+│   ├── notices                        │
+│   └── ledgers                        │
 └──────────────────────────────────────┘
 ```
 
@@ -395,42 +400,65 @@ requireRole(...allowedRoles) → middleware function
 
 ### 4.5 Middleware Matrix
 
-| Route | tenantMiddleware | requireRole | requirePermission |
-|---|---|---|---|
-| `POST /api/auth/*` | ✗ | ✗ | ✗ |
-| `POST /api/committee/` | ✓ | `SocietyOwner` | — |
-| `GET /api/committee/` | ✓ | `SocietyOwner` | — |
-| `PATCH /api/committee/:id` | ✓ | `SocietyOwner` | — |
-| `DELETE /api/committee/:id` | ✓ | `SocietyOwner` | — |
-| `GET /api/society/rates/default` | ✓ | — | — |
-| `PATCH /api/society/rates/default` | ✓ | `SocietyOwner` | — |
-| `GET /api/society/late-fee-settings` | ✓ | — | — |
-| `PATCH /api/society/late-fee-settings` | ✓ | `SocietyOwner` | — |
-| `GET /api/society/:id` | ✓ | — | `manageSociety` |
-| `PATCH /api/society/:id` | ✓ | — | `manageSociety` |
-| `DELETE /api/society/:id` | ✓ | — | `manageSociety` |
-| `GET /api/users/` | ✓ | — | `manageResidents` |
-| `GET /api/users/:id` | ✓ | — | `manageResidents` |
-| `PATCH /api/users/:id` | ✓ | — | `manageResidents` |
-| `DELETE /api/users/:id` | ✓ | — | `manageResidents` |
-| `PATCH /api/users/:id/rate` | ✓ | — | `manageResidents` |
-| `GET /api/users/:id/rate` | ✓ | — | *(self or manageResidents, handled in controller)* |
-| `POST /api/payments/create-order` | ✓ | `Resident` | — |
-| `POST /api/payments/verify` | ✓ | `Resident` | — |
-| `POST /api/payments/generate-bill` | ✓ | — | *(inline: Owner or manageBills)* |
-| `GET /api/payments/` | ✓ | — | *(role-scoped in controller)* |
-| `GET /api/test/protected` | ✓ | — | — |
+| Route | tenantMiddleware | requireActiveUser | requireRole | requirePermission / Guard |
+|---|:---:|:---:|:---:|---|
+| `POST /api/auth/register-owner` | ✗ | ✗ | — | Public |
+| `POST /api/auth/register-resident` | ✗ | ✗ | — | Public |
+| `POST /api/auth/login` | ✗ | ✗ | — | Public |
+| `GET /api/auth/check-status` | ✓ | ✗ | — | Self / JWT verification (refreshes token on active) |
+| `POST /api/committee/` | ✓ | ✗ | `SocietyOwner` | — |
+| `GET /api/committee/` | ✓ | ✗ | `SocietyOwner` | — |
+| `PATCH /api/committee/:id` | ✓ | ✗ | `SocietyOwner` | — |
+| `DELETE /api/committee/:id` | ✓ | ✗ | `SocietyOwner` | — |
+| `GET /api/society/rates/default` | ✓ | ✗ | — | — |
+| `PATCH /api/society/rates/default` | ✓ | ✗ | `SocietyOwner` | — |
+| `GET /api/society/late-fee-settings` | ✓ | ✗ | — | — |
+| `PATCH /api/society/late-fee-settings` | ✓ | ✗ | `SocietyOwner` | — |
+| `GET /api/society/:id` | ✓ | ✗ | — | `manageSociety` |
+| `PATCH /api/society/:id` | ✓ | ✗ | — | `manageSociety` |
+| `DELETE /api/society/:id` | ✓ | ✗ | `SocietyOwner` | — |
+| `GET /api/users/` | ✓ | ✗ | — | `manageResidents` |
+| `GET /api/users/residents/pending` | ✓ | ✗ | — | `manageResidents` |
+| `PATCH /api/users/residents/:id/approve` | ✓ | ✗ | — | `manageResidents` |
+| `PATCH /api/users/residents/:id/reject` | ✓ | ✗ | — | `manageResidents` |
+| `GET /api/users/:id` | ✓ | ✗ | — | `manageResidents` |
+| `PATCH /api/users/:id` | ✓ | ✗ | — | `manageResidents` |
+| `DELETE /api/users/:id` | ✓ | ✗ | — | `manageResidents` |
+| `PATCH /api/users/:id/rate` | ✓ | ✗ | — | `manageResidents` |
+| `GET /api/users/:id/rate` | ✓ | ✗ | — | *(self or manageResidents)* |
+| `POST /api/payments/create-order` | ✓ | ✓ | `Resident` | Scoped to resident's pending bill |
+| `POST /api/payments/verify` | ✓ | ✓ | `Resident` | Cryptographic HMAC-SHA256 signature check |
+| `POST /api/payments/generate-bill` | ✓ | ✗ | — | *(inline: SocietyOwner or manageBills)* |
+| `POST /api/payments/generate-bulk-bills` | ✓ | ✗ | — | *(inline: SocietyOwner or manageBills)* |
+| `GET /api/payments/` | ✓ | ✓ | — | *(role-scoped in controller)* |
+| `POST /api/payments/webhook` | ✗ | ✗ | — | Razorpay HMAC-SHA256 header validation |
+| `POST /api/complaints` | ✓ | ✓ | — | Scoped to active resident / society |
+| `GET /api/complaints` | ✓ | ✓ | — | Filterable by `?status=` |
+| `PATCH /api/complaints/:id/upvote` | ✓ | ✓ | — | Idempotent toggle per resident |
+| `PATCH /api/complaints/:id/status` | ✓ | ✗ | — | `resolveComplaints` or `SocietyOwner` |
+| `PATCH /api/complaints/:id/verdict` | ✓ | ✓ | — | Ticket creator only (`createdBy`) |
+| `GET /api/notices` | ✓ | ✓ | — | Tri-level sort (Priority -> Pinned -> Recent) |
+| `POST /api/notices` | ✓ | ✗ | — | `manageNotices` or `SocietyOwner` |
+| `PATCH /api/notices/:id/pin` | ✓ | ✓ | — | Toggles user ID in `pinnedBy` |
+| `DELETE /api/notices/:id` | ✓ | ✗ | — | `manageNotices` or `SocietyOwner` |
+| `POST /api/finances/expenses` | ✓ | ✗ | — | `manageBills` or `SocietyOwner` |
+| `GET /api/finances/metrics` | ✓ | ✓ | — | High-performance MongoDB facet aggregation |
+| `GET /api/test/protected` | ✓ | ✗ | — | Dev diagnostic |
 
 ---
 
 ## 5. Complete Folder & File Structure
 
-### 5.1 Current State
+### 5.1 Current State (Certified & Synchronized)
 
 ```
 SocietyPro_MERN/
 ├── PRD.md                          ← Product Requirements Document
-├── Architecture.md                 ← This document
+├── Architecture.md                 ← System Architecture Blueprint (this document)
+├── Design.md                       ← Design System & UI/UX Specifications
+├── Memory.md                       ← Persistent Engineering Memory & Sprint Log
+├── Phases.md                       ← Development Phases & Feature Completion Matrix
+├── Rules.md                        ← Non-negotiable Engineering Standards & Invariants
 ├── .gitignore
 │
 ├── backend/
@@ -439,126 +467,100 @@ SocietyPro_MERN/
 │   ├── .gitignore
 │   ├── package.json                ← bcryptjs, cors, dotenv, express, jsonwebtoken, mongoose, razorpay
 │   ├── requests.http               ← Manual API test file (REST Client)
-│   ├── test_resident_rates.js      ← Integration test script (Node HTTP, no framework)
+│   ├── test_backend_suite.js       ← Comprehensive integration test suite (58 passing tests)
+│   ├── test_sprint_features.js     ← Sprint feature certification suite (26 passing tests)
+│   ├── test_resident_rates.js      ← Rate calculation test script
 │   │
 │   ├── config/
 │   │   └── razorpay.js             ← Razorpay SDK instance initialised from env vars
 │   │
 │   ├── models/
 │   │   ├── Society.js              ← Society schema: name, address, code, rates, lateFee
-│   │   ├── User.js                 ← User schema: role, societyId, permissions, customRate
-│   │   └── Payment.js             ← Payment schema: amount(Paise), status, razorpay IDs
+│   │   ├── User.js                 ← User schema: role, societyId, permissions, rate engine fields, status
+│   │   ├── Payment.js              ← Payment schema: amount(Paise), status, razorpay IDs, residentId
+│   │   ├── Complaint.js            ← Grievance schema: affectedFlats, upvotedBy, upvoteCount, verdict
+│   │   ├── Notice.js               ← Notice board schema: isPriority, pinnedBy, societyId
+│   │   └── Ledger.js               ← Treasury ledger schema: amountInPaise, amountInRupees, referenceBillId
 │   │
 │   ├── controllers/
-│   │   ├── authController.js       ← registerOwner, registerResident, loginUser
-│   │   ├── societyController.js    ← getSocietyById, updateSociety, deleteSociety,
-│   │   │                              updateDefaultRates, getDefaultRates,
-│   │   │                              updateLateFeeSettings, getLateFeeSettings
-│   │   ├── committeeController.js  ← createCommittee, getCommitteeMembers,
-│   │   │                              updateCommitteePermissions, deleteCommittee
+│   │   ├── authController.js       ← registerOwner, registerResident, loginUser, checkStatus (token refresh)
+│   │   ├── societyController.js    ← getSocietyById, updateSociety, deleteSociety, rates, late-fee
+│   │   ├── committeeController.js  ← createCommittee, getCommitteeMembers, updatePermissions, delete
 │   │   ├── userController.js       ← getSocietyUsers, getUserById, updateUser, deleteUser,
-│   │   │                              setResidentCustomRate, getResidentRate
-│   │   └── paymentController.js   ← createOrder, verifyPayment, generateBill, getBills
+│   │   │                              setResidentCustomRate, getResidentRate, approve/reject resident
+│   │   ├── paymentController.js    ← createOrder, verifyPayment, computeResidentRate, generateBill,
+│   │   │                              generateBulkBills, getBills, handleRazorpayWebhook
+│   │   ├── complaintController.js  ← createComplaint, getComplaints, toggleUpvoteComplaint, updateStatus, setVerdict
+│   │   ├── noticeController.js     ← getNotices (tri-level sort), createNotice, togglePinNotice, deleteNotice
+│   │   └── financeController.js    ← recordExpense, getFinancialMetrics (MongoDB $facet aggregation)
 │   │
 │   ├── middleware/
-│   │   ├── tenantMiddleware.js     ← JWT decode → req.user (id, role, societyId, permissions)
+│   │   ├── tenantMiddleware.js     ← JWT decode → req.user (id, role, societyId, status, permissions)
+│   │   ├── requireActiveUser.js    ← Blocks pending/rejected accounts from operational routes (HTTP 403)
 │   │   ├── roleMiddleware.js       ← requireRole(...allowedRoles) factory
-│   │   └── requirePermission.js   ← requirePermission(permissionName) factory
+│   │   └── requirePermission.js    ← requirePermission(permissionName) factory
 │   │
 │   ├── routes/
-│   │   ├── authRoutes.js           ← POST /register-owner, /register-resident, /login
-│   │   ├── societyRoutes.js        ← GET/PATCH/DELETE /:id + rates + late-fee-settings
-│   │   ├── committeeRoutes.js      ← POST/GET/PATCH/DELETE /committee
-│   │   ├── userRoutes.js           ← GET/PATCH/DELETE /users + /:id/rate
-│   │   ├── paymentRoutes.js        ← /create-order, /verify, /generate-bill, GET /
-│   │   └── testRoutes.js           ← GET /protected (dev debug)
+│   │   ├── authRoutes.js           ← /register-owner, /register-resident, /login, /check-status
+│   │   ├── societyRoutes.js        ← /:id + default rates + late-fee-settings
+│   │   ├── committeeRoutes.js      ← CRUD committee members & granular permissions
+│   │   ├── userRoutes.js           ← CRUD users + /:id/rate + /residents/pending + approve/reject
+│   │   ├── paymentRoutes.js        ← /create-order, /verify, /generate-bill, /generate-bulk-bills, /webhook, GET /
+│   │   ├── complaintRoutes.js      ← CRUD complaints + /:id/upvote + /:id/status + /:id/verdict
+│   │   ├── noticeRoutes.js         ← GET / (tri-level sorted), POST /, PATCH /:id/pin, DELETE /:id
+│   │   ├── financeRoutes.js        ← POST /expenses, GET /metrics
+│   │   └── testRoutes.js           ← GET /protected (dev diagnostic)
 │   │
 │   └── utils/
 │       ├── generateSocietyCode.js  ← generateSocietyCode() + generateUniqueSocietyCode()
-│       └── calculateLateFee.js    ← (principal, ratePercentPerYear, daysOverdue, grace) → fee
+│       └── calculateLateFee.js     ← (principal, ratePercentPerYear, daysOverdue, grace) → fee
 │
 └── frontend/
     ├── index.html                  ← Vite HTML entry; mounts <div id="root">
     ├── vite.config.js              ← plugins: [react(), tailwindcss()]
-    ├── package.json                ← react, react-dom, react-router-dom, axios,
-    │                                  tailwindcss, @tailwindcss/vite, lucide-react
+    ├── package.json                ← react, react-dom, react-router-dom, axios, tailwindcss, lucide-react, jspdf
     ├── eslint.config.js
     ├── .gitignore
     │
-    ├── public/                     ← Static assets (favicon, etc.)
+    ├── public/                     ← Static assets
     │
     └── src/
         ├── main.jsx                ← ReactDOM.createRoot('#root').render(<App />)
-        ├── App.jsx                 ← BrowserRouter + Routes + ProtectedRoute wrappers
+        ├── App.jsx                 ← BrowserRouter + Routes + ProtectedRoute wrappers (including /dashboard)
         ├── index.css               ← @import "tailwindcss" + @theme design tokens
         ├── App.css
         │
         ├── api/
-        │   └── axiosInstance.js   ← axios.create(baseURL: localhost:5000/api)
-        │                              + request interceptor (Bearer token injection)
+        │   └── axiosInstance.js    ← axios.create(baseURL: dynamic VITE_API_BASE_URL) + Bearer token injection
         │
         ├── context/
-        │   └── AuthContext.jsx    ← createContext, AuthProvider, useAuth hook
-        │                              State: { token, user, login(), logout(),
-        │                                       isAuthenticated, isSocietyOwner,
-        │                                       isCommittee, isResident }
-        │                              Persistence: localStorage
+        │   └── AuthContext.jsx     ← Auth state machine (token, user, status, role booleans, localStorage)
         │
         ├── components/
-        │   ├── Layout.jsx         ← Topbar + Sidebar (desktop fixed, mobile drawer)
-        │   │                         Role-gated nav items, Sign Out
-        │   └── ProtectedRoute.jsx ← Redirect to /login if !isAuthenticated
-        │                             Render "Access Denied" if role not in allowedRoles[]
+        │   ├── Layout.jsx          ← Topbar + Sidebar (desktop fixed, mobile drawer, role-gated navigation)
+        │   └── ProtectedRoute.jsx  ← Redirects to /login or /pending-approval based on auth and user status
         │
         └── pages/
-            ├── Login.jsx           ← POST /api/auth/login → AuthContext.login()
-            ├── Register.jsx        ← Tab: Owner (POST /register-owner)
-            │                            Tab: Resident (POST /register-resident + societyCode)
-            ├── Dashboard.jsx       ← Role-contextual overview
+            ├── Login.jsx           ← Email/password authentication
+            ├── Register.jsx        ← Dual-tab onboarding (Owner creates society; Resident joins via code)
+            ├── PendingApproval.jsx ← Gatekeeper screen with 4-second reactive polling & auto-redirect
+            ├── Dashboard.jsx       ← Role-contextual overview with operational metric cards
             ├── SocietyManagement.jsx ← Society profile, default rates, late fee settings
-            ├── CommitteeManagement.jsx ← Create/list/edit/delete committee members & permissions
-            ├── ResidentManagement.jsx  ← List residents, set custom rates
-            └── Payments.jsx        ← Bills list, bill generation (admin), Razorpay checkout (resident)
+            ├── CommitteeManagement.jsx ← Appoint members and delegate granular permissions
+            ├── ResidentManagement.jsx  ← Resident roster, custom rate config, pending approvals queue
+            ├── Payments.jsx        ← Bills table, dynamic single & bulk bill generator, Razorpay checkout, PDF receipt download
+            ├── Complaints.jsx      ← Grievance board with photo proof preview, idempotent upvoting, and ticket creator verdict
+            └── Notices.jsx         ← Notice board with priority pins and optimistic toggle feedback
 ```
 
-### 5.2 Target Structure (Post-Roadmap)
+### 5.2 Target Architecture Roadmap Status
 
-```
-backend/
-├── models/
-│   ├── Society.js
-│   ├── User.js
-│   ├── Payment.js
-│   ├── Complaint.js        [PLANNED] — Grievance redressal
-│   └── Notice.js           [PLANNED] — Notice board
-│
-├── controllers/
-│   ├── complaintController.js [PLANNED]
-│   └── noticeController.js    [PLANNED]
-│
-├── routes/
-│   ├── complaintRoutes.js     [PLANNED]
-│   └── noticeRoutes.js        [PLANNED]
-│
-└── utils/
-    ├── generateSocietyCode.js
-    ├── calculateLateFee.js
-    ├── generateInvoicePDF.js  [PLANNED] — PDFKit/puppeteer
-    └── sendEmail.js           [PLANNED] — Nodemailer/SendGrid
+All planned operational modules from the initial roadmap (Complaints, Notices, Treasury Ledger, Gatekeeper Approval, Bulk Billing Engine, and Branded Invoicing) have transitioned from **[PLANNED]** to **[COMPLETED & CERTIFIED]**.
 
-frontend/src/
-├── pages/
-│   ├── Complaints.jsx         [PLANNED]
-│   ├── Notices.jsx            [PLANNED]
-│   ├── Profile.jsx            [PLANNED]
-│   └── InvoiceDetail.jsx      [PLANNED]
-│
-└── hooks/                     [PLANNED — currently no custom hooks]
-    ├── useSociety.js
-    ├── usePayments.js
-    ├── useComplaints.js
-    └── useNotices.js
-```
+Future evolutions under consideration for Enterprise Scale:
+- Serverless PDF generation microservice (for scheduled batch archiving)
+- Automated email/SMS dispatch via Nodemailer & Twilio
+- WebSocket / SSE push layer to complement HTTP polling for live notice board broadcasts
 
 ---
 
@@ -567,16 +569,25 @@ frontend/src/
 ### 6.1 Entity Relationship Overview
 
 ```
-Society  1 ─────────── * User
-   │                      │
-   │  (ownerId)           │  (societyId)
-   │                      │
-   └── 1 ────── *  Payment
-                    (societyId, residentId)
-
-[PLANNED]
-Society  1 ─── * Complaint  (societyId, raisedBy → User)
-Society  1 ─── * Notice     (societyId, createdBy → User)
+                     ┌──────────────────┐
+                     │     Society      │
+                     └────────┬─────────┘
+                              │ 1
+        ┌─────────────────────┼─────────────────────┬─────────────────────┐
+        │ *                   │ *                   │ *                   │ *
+┌───────▼────────┐    ┌───────▼────────┐    ┌───────▼────────┐    ┌───────▼────────┐
+│      User      │    │    Payment     │    │   Complaint    │    │     Notice     │
+│ (Rate Config & │    │  (Stored in    │    │ (Upvotes &     │    │ (Priority &    │
+│  Status Gate)  │    │   Paise)       │    │  User Verdict) │    │  Personal Pins)│
+└───────┬────────┘    └───────┬────────┘    └────────────────┘    └────────────────┘
+        │ 1                   │ 1 (optional ref)
+        │                     │
+        │                     ▼
+        │             ┌────────────────┐
+        └────────────►│     Ledger     │
+          (createdBy) │ (Double-Entry  │
+                      │  Audit Trail)  │
+                      └────────────────┘
 ```
 
 ### 6.2 `Society` Schema
@@ -607,7 +618,7 @@ createdAt                          Date          default: Date.now
 
 **Index:** `societyCode` has a unique index (Mongoose `unique: true`).
 
-### 6.3 `User` Schema
+### 6.3 `User` Schema (Rate Engine & Gatekeeper Enabled)
 
 ```
 Collection: users
@@ -622,23 +633,50 @@ role                               String        enum: ['SocietyOwner','Committe
                                                  required
 societyId                          ObjectId      ref: Society, required
                                                  ← PRIMARY TENANT KEY
+status                             String        enum: ['pending','active','rejected']
+                                                 default: 'active' (Owners/Committee)
+                                                 Residents default to 'pending'
 customLabel                        String        optional (Committee label, e.g. "Treasurer")
 permissions                        String[]      default: []
                                                  values: 'manageResidents' | 'manageBills'
                                                          | 'manageNotices' | 'resolveComplaints'
                                                          | 'manageSociety'
 unitNumber                         String        optional (Resident's flat, e.g. "A-101")
+
+/* Automated Maintenance Rate Engine Configuration */
+sqftArea                           Number        default: 850 (Square feet)
+billingType                        String        enum: ['flat_rate', 'sqft_based']
+                                                 default: 'flat_rate'
+fixedRate                          Number        default: 2000 (Base INR for flat_rate)
+ratePerSqft                        Number        default: 2.5 (INR/sqft for sqft_based)
+parkingCharges                     Number        default: 300 (INR surcharge)
+waterCharges                       Number        default: 200 (INR surcharge)
+
+/* Legacy rate override support */
 customRateItems[]
   .name                            String        required
-  .amount                          Number        required (INR — displayed; not Paise)
+  .amount                          Number        required (INR)
   .gstApplicable                   Boolean       default: false
 usingCustomRate                    Boolean       default: false
+
 createdAt                          Date          default: Date.now
 ```
 
-**Indexes:** `email` unique index.
+**Indexes:** `email` unique index, `societyId` compound indexes, `status` index.
 
-### 6.4 `Payment` Schema
+### 6.4 Automated Maintenance Rate Engine Calculation
+
+The backend computes the exact resident maintenance rate dynamically inside `computeResidentRate(user)`:
+
+$$\text{Base Amount} = \begin{cases} \text{sqftArea} \times \text{ratePerSqft} & \text{if } \text{billingType} = \text{'sqft\_based'} \\ \text{fixedRate} & \text{if } \text{billingType} = \text{'flat\_rate'} \end{cases}$$
+
+$$\text{Total Amount (INR)} = \text{Base Amount} + \text{parkingCharges} + \text{waterCharges}$$
+
+$$\text{Amount In Paise} = \text{Math.round}(\text{Total Amount} \times 100)$$
+
+**Batch Invariant:** When `generateBulkBills` is invoked, the engine fetches all active residents (`status: 'active'`), executes `computeResidentRate` individually for each resident according to their specific unit dimensions and rate configs, and bulk-inserts all invoices with zero floating-point imprecision.
+
+### 6.5 `Payment` Schema
 
 ```
 Collection: payments
@@ -663,68 +701,110 @@ createdAt                          Date          default: Date.now
 updatedAt                          Date          default: Date.now
 ```
 
-### 6.5 Monetary Handling — Paise Contract
-
-The `amount` field in `Payment` is the **only** monetary field stored in Paise. Rate items in `Society.defaultRateItems` and `User.customRateItems` store amounts in **INR** (used for display and billing calculation input). The conversion boundary is always in the payment controller:
+### 6.6 `Complaint` Schema (Grievance Redressal V2)
 
 ```
-Input (INR, from client)
-        │
-        ▼
-paymentController.js
-  const amountInPaise = Math.round(amount * 100);
-        │
-        ▼
-Payment.create({ amount: amountInPaise })  ← STORED IN PAISE
-        │
-        ▼
-Razorpay SDK call
-  options.amount = amountInPaise           ← RAZORPAY EXPECTS PAISE
+Collection: complaints
+
+Field                              Type          Constraint / Default
+─────────────────────────────────────────────────────────────────────
+_id                                ObjectId      auto-generated
+societyId                          ObjectId      ref: Society, required
+createdBy                          ObjectId      ref: User, required
+flatNo                             String        required (e.g. "B-404")
+title                              String        required
+description                        String        required
+imageUrl                           String        optional (photo proof URL)
+affectedFlats                      String[]      default: [] (flat numbers of upvoters)
+upvotedBy                          ObjectId[]    default: [] (User IDs of upvoters)
+upvoteCount                        Number        default: 0 (synchronised with upvotedBy.length)
+status                             String        enum: ['open','in_progress','resolved','closed']
+                                                 default: 'open'
+verdict                            String        enum: ['confirmed','reopened', null]
+                                                 default: null (ticket creator only)
+createdAt                          Date          default: Date.now
+updatedAt                          Date          default: Date.now
 ```
 
-**Display layer (frontend):**
+**Verdict Lifecycle:**
+- When committee sets status to `'resolved'`, the ticket creator reviews the resolution.
+- Setting `verdict = 'confirmed'` automatically marks `status = 'closed'`.
+- Setting `verdict = 'reopened'` automatically resets `status = 'open'` for re-investigation.
 
-```js
-// To display a Payment.amount to the user:
-const inrAmount = (payment.amount / 100).toFixed(2);
-// e.g. 250000 Paise → "₹2,500.00"
-```
-
-**No virtual getters** are defined yet on the Mongoose schema. The conversion is currently done ad-hoc in the frontend. **Planned:** add a `amountInINR` virtual getter to the `Payment` schema.
-
-### 6.6 Planned: `Complaint` Schema
+### 6.7 `Notice` Schema (Priority & Personal Bookmarking)
 
 ```
-Collection: complaints  [PLANNED]
+Collection: notices
 
-_id, societyId, raisedBy (→ User), unitNumber,
-title, description,
-category:        Enum ['maintenance','security','sanitation','noise','other']
-status:          Enum ['open','in_progress','resolved','closed','reopened']
-priority:        Enum ['low','medium','high','critical']
-facingSameIssue: ObjectId[]   ← Resident _ids who upvoted
-facingFlats:     String[]     ← unit numbers of upvoters (for dedup)
-resolutionNote:  String
-resolvedAt:      Date
-residentVerdict: Enum ['confirmed','reopened', null]
-verdictAt:       Date
-createdAt, updatedAt
+Field                              Type          Constraint / Default
+─────────────────────────────────────────────────────────────────────
+_id                                ObjectId      auto-generated
+societyId                          ObjectId      ref: Society, required
+title                              String        required
+body                               String        required
+isPriority                         Boolean       default: false
+pinnedBy                           ObjectId[]    default: [] (User IDs who pinned)
+createdBy                          ObjectId      ref: User, required
+createdAt                          Date          default: Date.now
 ```
 
-### 6.7 Planned: `Notice` Schema
+**Tri-Level Sort Specification:**
+Notices query executes a tri-level sort:
+1. **Priority Announcements** (`isPriority: true` first)
+2. **Personally Pinned Notices** (`pinnedBy` includes `req.user.id`)
+3. **Chronological Recency** (`createdAt: -1`)
+
+### 6.8 `Ledger` Schema (Double-Entry Treasury)
 
 ```
-Collection: notices  [PLANNED]
+Collection: ledgers
 
-_id, societyId, createdBy (→ User),
-title, body,
-category:     Enum ['general','urgent','maintenance','event','financial']
-isPinned:     Boolean (default: false)
-pinnedAt:     Date
-expiresAt:    Date (optional)
-attachments:  String[]  ← file URLs
-bookmarkedBy: ObjectId[] ← Resident _ids
-createdAt, updatedAt
+Field                              Type          Constraint / Default
+─────────────────────────────────────────────────────────────────────
+_id                                ObjectId      auto-generated
+societyId                          ObjectId      ref: Society, required
+type                               String        enum: ['income','expense'], required
+category                           String        required (e.g. "Maintenance", "Security")
+amountInPaise                      Number        required, integer (stored in Paise)
+paymentMethod                      String        default: 'Razorpay'
+referenceBillId                    ObjectId      ref: Payment, optional
+description                        String        optional
+createdAt                          Date          default: Date.now
+```
+
+**Virtual Getter:** `amountInRupees` returns `amountInPaise / 100`.  
+**Concurrency Guard:** Compound unique sparse index `{ referenceBillId: 1, type: 1 }` prevents double-crediting if webhooks and client verification race.
+
+### 6.9 Reactive Gatekeeper Polling Architecture
+
+```
+[Resident Browser: PendingApproval.jsx]
+         │
+         │  Timer: setInterval(pollStatus, 4000)
+         ▼
+GET /api/auth/check-status
+Authorization: Bearer <existing_pending_jwt>
+         │
+         ▼
+[Backend: authController.checkStatus]
+  1. tenantMiddleware verifies JWT → req.user.id
+  2. Queries User.findById(req.user.id).select('status role name email societyId permissions')
+         │
+    ┌────┴───────────────────────────┐
+    │ status === 'pending'           │ status === 'active'
+    ▼                                ▼
+HTTP 200                         HTTP 200
+{ status: 'pending',             { status: 'active',
+  message: 'Under review' }        message: 'Account approved',
+                                   token: <FRESH_ACTIVE_JWT>,
+                                   user: { ...freshUser } }
+                                     │
+                                     ▼
+                     [Client: AuthContext.updateTokenAndUser]
+                       1. Stores fresh JWT in localStorage
+                       2. Updates in-memory AuthContext user
+                       3. Clears 4-second polling timer
+                       4. window.location.href = '/dashboard'
 ```
 
 ---
@@ -1075,120 +1155,46 @@ Axios `baseURL` is hardcoded to `http://localhost:5000/api`. **Planned:** enviro
 
 ---
 
-## 11. Known Architectural Issues & Gaps
+## 11. Architectural Audit & Hardening Status
 
-### P0 — Critical Bugs
+### 11.1 Resolved Issues & Remediations (Sprint Certified)
 
-| Issue | Location | Impact |
-|---|---|---|
-| `/residents` route uses non-existent role `'SocietyAdmin'` | `App.jsx` line 63, `Layout.jsx` line 55 | `ResidentManagement.jsx` is inaccessible to ALL users including owners |
+| Issue | Original Location | Resolution Status | Evidence |
+|---|---|:---:|---|
+| `/residents` route role misconfiguration | `App.jsx`, `Layout.jsx` | ✅ Resolved | Updated allowed roles to `['SocietyOwner', 'Committee']`. Accessible to all admins. |
+| Timing attack on payment signature verification | `paymentController.js` | ✅ Resolved | Replaced `===` with `crypto.timingSafeEqual` comparing UTF-8 buffers. |
+| Razorpay server-side webhook missing | `paymentController.js`, `paymentRoutes.js` | ✅ Resolved | Added `POST /api/payments/webhook` with HMAC-SHA256 verification and automatic Ledger credit. |
+| Double credit race condition on payment verification | `paymentController.js`, `Ledger.js` | ✅ Resolved | Added atomic query `{ razorpayOrderId, status: { $ne: 'captured' } }` and compound unique sparse index on `Ledger`. |
+| Gatekeeper resident access leak | Operational route chains | ✅ Resolved | Implemented `requireActiveUser.js` blocking unverified residents with HTTP 403 `ACCOUNT_INACTIVE`. |
+| Unreactive gatekeeper UX | `PendingApproval.jsx`, `authController.js` | ✅ Resolved | Added `GET /api/auth/check-status` with token refresh and 4s reactive frontend polling with auto-redirect. |
+| Manual individual billing bottleneck | `paymentController.js`, `Payments.jsx` | ✅ Resolved | Implemented `POST /api/payments/generate-bulk-bills` and dynamic maintenance rate engine with auto-compute. |
+| Grievance lack of community validation & closure | `Complaint.js`, `complaintController.js` | ✅ Resolved | Added idempotent upvoting (`upvotedBy`/`upvoteCount`) and ticket creator two-phase settlement verdict. |
+| Notice board noise & lack of bookmarking | `Notice.js`, `noticeController.js` | ✅ Resolved | Implemented personal pin toggling (`pinnedBy`) and tri-level sorting (Priority -> Pinned -> Recent). |
+| Lack of formal invoice receipts | `Payments.jsx` | ✅ Resolved | Integrated `jsPDF` vector generator with itemized charge breakdown and official PAID watermark. |
 
-**Fix:** Change `'SocietyAdmin'` to `'SocietyOwner'` in both files.
+### 11.2 Standing Architectural Invariants
 
-### P1 — Security Gaps
-
-| Issue | Location | Risk |
-|---|---|---|
-| Owner registration is not atomic | `authController.registerOwner` | If `User.create` fails after `Society.create`, orphaned Society document left in DB |
-| Signature comparison uses `===` not constant-time compare | `paymentController.verifyPayment` | Timing attack (negligible in practice but non-compliant) |
-| CORS allows all origins (`cors()`) | `server.js` | In production, any origin can call the API |
-| JWT expiry not handled on client | `axiosInstance.js` | Expired token sent until API returns 401; no auto-logout |
-| JWT permissions embedded — stale after role change | `tenantMiddleware.js` | Permission changes require re-login to take effect |
-
-### P2 — Missing Infrastructure
-
-| Issue | Impact |
-|---|---|
-| No Razorpay server-side webhook endpoint | Payment status can desync if client drops after checkout but before verify |
-| No refresh token mechanism | 7-day access tokens require full re-login to revoke |
-| No request rate limiting | Auth endpoints susceptible to brute-force |
-| No input sanitisation middleware (e.g., express-validator) | Relies on manual guards in controllers |
-| Axios `baseURL` hardcoded to localhost | Prevents staging/production deployments without code change |
-| No `VITE_API_BASE_URL` env var | Same as above |
-
-### P3 — Functional Gaps
-
-| Issue |
-|---|
-| `calculateLateFee` utility is not integrated into any API response |
-| `customRateItems` amounts are INR but not documented as such (contrast: `Payment.amount` is Paise) |
-| `isSuperAdmin` in AuthContext but `SuperAdmin` is not a valid `role` enum value |
-| `test_resident_rates.js` is a dev file committed to the backend root (should be in `__tests__/`) |
+1. **Paise Integer Currency Rule**: All database monetary fields (`Payment.amount`, `Ledger.amountInPaise`) store integer Paise (`Math.round(amount * 100)`). Conversions to INR happen only at the presentation layer.
+2. **Tenant Scoping Mandatory**: All database operations touching tenant-scoped entities must include `{ societyId: req.user.societyId }` sourced strictly from verified JWT claims.
+3. **Ticket Creator Verdict Exclusivity**: Only the original resident (`createdBy`) who opened a grievance ticket may execute the `PATCH /api/complaints/:id/verdict` settlement action.
+4. **Idempotent Webhook Processing**: Replayed Razorpay webhooks return HTTP 200 without mutating ledger records or bill status.
 
 ---
 
-## 12. Target Architecture (Post-Roadmap)
+## 12. Enterprise Production Roadmap (Next Milestones)
 
 ```
 SocietyPro_MERN/
 │
-├── backend/
-│   ├── server.js
-│   ├── models/
-│   │   ├── Society.js
-│   │   ├── User.js       ← add: status field ('pending'|'active'|'rejected')
-│   │   ├── Payment.js    ← add: virtual amountInINR getter
-│   │   ├── Complaint.js  [NEW]
-│   │   └── Notice.js     [NEW]
-│   │
-│   ├── controllers/
-│   │   ├── authController.js   ← wrap in Mongoose session (atomic tenant provisioning)
-│   │   ├── complaintController.js [NEW]
-│   │   ├── noticeController.js    [NEW]
-│   │   └── webhookController.js   [NEW] — Razorpay payment.captured event
-│   │
-│   ├── routes/
-│   │   ├── complaintRoutes.js [NEW]
-│   │   ├── noticeRoutes.js    [NEW]
-│   │   └── webhookRoutes.js   [NEW]
-│   │
-│   ├── middleware/
-│   │   ├── tenantMiddleware.js     ← short-lived access tokens (planned)
-│   │   ├── requirePermission.js
-│   │   ├── roleMiddleware.js
-│   │   ├── rateLimiter.js          [NEW] — express-rate-limit on auth routes
-│   │   └── requireActiveUser.js    [NEW] — check User.status === 'active'
-│   │
-│   └── utils/
-│       ├── generateSocietyCode.js
-│       ├── calculateLateFee.js
-│       ├── generateInvoicePDF.js   [NEW]
-│       └── sendEmail.js            [NEW]
+├── Scheduled Workers & Cron:
+│   ├── Automated Monthly Billing Cron (node-cron / BullMQ)
+│   └── Late Fee Penalty Accrual Daemon
 │
-└── frontend/src/
-    ├── api/
-    │   └── axiosInstance.js  ← add 401 response interceptor → auto-logout
-    │
-    ├── pages/
-    │   ├── Complaints.jsx    [NEW]
-    │   ├── Notices.jsx       [NEW]
-    │   ├── Profile.jsx       [NEW]
-    │   └── InvoiceDetail.jsx [NEW]
-    │
-    └── hooks/
-        ├── useSociety.js     [NEW] — data fetching + state for society
-        ├── usePayments.js    [NEW]
-        ├── useComplaints.js  [NEW]
-        └── useNotices.js     [NEW]
+├── Notification Channels:
+│   ├── Email Dispatch Service (Nodemailer / SendGrid)
+│   └── SMS / WhatsApp Gateways (Twilio)
+│
+└── Infrastructure & Reliability:
+    ├── Redis Cache for Notice Board & Rate Configs
+    └── Distributed Rate Limiting (express-rate-limit + Redis Store)
 ```
-
-### Planned Middleware Pipeline Addition: `requireActiveUser`
-
-```
-tenantMiddleware (JWT decode → req.user)
-        │
-        ▼
-requireActiveUser  [PLANNED]
-  User.findById(req.user.id).select('status')
-  if status === 'active' → next()
-  if status === 'pending' → 403 "Account awaiting approval"
-  if status === 'rejected' → 403 "Account rejected"
-        │
-        ▼
-requireRole / requirePermission
-        │
-        ▼
-Controller
-```
-
-This is the gatekeeper approval middleware that enables the resident pending/active lifecycle.

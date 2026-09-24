@@ -600,11 +600,118 @@ export const ReopenButton = ({ onClick, loading, label = "Reopen" }) => (
     <span>{label}</span>
   </button>
 );
-```
 
 ---
 
-## 6. Accessibility, States & Empty/Loading Handling
+### 5.6 Dynamic Rate Modal & Bulk Maintenance Billing UI (Payments.jsx)
+
+The invoice creation modal adapts dynamically between **Single Unit** and **Bulk Society** billing modes:
+
+1. **Individual Mode (Auto-Computed Rate Engine)**:
+   - Selecting a resident queries their stored rate profile (`sqftArea`, `billingType`, `fixedRate`, `ratePerSqft`, `parkingCharges`, `waterCharges`).
+   - The UI displays an itemized formula breakdown card:
+     ```
+     [Base: ₹2,125 (850 sqft × ₹2.50)] + [Parking: ₹300] + [Water: ₹200] = ₹2,625
+     ```
+   - Amount input is auto-populated and locked to prevent accidental clerical errors.
+2. **Bulk Society Mode (Batch Calculation Banner)**:
+   - When the `Bulk Mode` toggle is engaged, the manual resident selector and amount field are replaced with a high-visibility Emerald informational banner:
+     ```
+     ⚡ Bulk Monthly Maintenance Run
+     Invoices will be automatically computed for ALL active residents based on their
+     individual flat dimensions (sqft), base rates, parking, and water charges.
+     ```
+   - Committee member inputs only **Title** (e.g. "Maintenance - October 2026"), **Month**, and **Due Date**.
+   - Single-click action executes batch generation with real-time feedback on total invoices created.
+
+---
+
+### 5.7 Grievance Card V2 with Upvote Badge, Photo Preview & Two-Phase Settlement (Complaints.jsx)
+
+Grievance cards support community validation, multimedia evidence, and verified ticket closure:
+
+1. **Community Upvote Pill**:
+   - `UpvoteButton` displays interactive count with thumbs-up icon.
+   - If the current resident has upvoted, the pill displays an emerald active state (`bg-teal-50 border-teal-300 text-teal-800`).
+   - Clicking toggles upvote status idempotently with instant local UI count increment/decrement.
+2. **Photo Proof Preview**:
+   - If `imageUrl` is provided, a thumbnail preview is rendered with rounded corners and subtle border.
+   - Clicking opens a high-resolution lightbox preview with zoom controls.
+3. **Two-Phase Creator Verdict Banner**:
+   - When a ticket status is marked `resolved`, an amber action banner appears exclusively for the original ticket creator (`createdBy`):
+     - **"Confirm Resolution"** (`ApproveButton`, emerald): Permanently closes the ticket (`verdict = 'confirmed'`, `status = 'closed'`).
+     - **"Reopen Issue"** (`ReopenButton`, amber): Reopens the ticket for further committee investigation (`verdict = 'reopened'`, `status = 'open'`).
+
+---
+
+### 5.8 Notice Board Bookmarking & Priority Announcement Cards (Notices.jsx)
+
+The notice board prioritizes critical society announcements and supports individual resident bookmarking:
+
+1. **Priority Announcement Badging**:
+   - Notices with `isPriority: true` display an elevated border (`border-amber-300 bg-amber-50/40`), an amber megaphone indicator, and a bold `PRIORITY NOTICE` badge.
+2. **Personal Bookmark / Pin Toggle**:
+   - Every notice card features a top-right Pin button (`Bookmark` / `Pin` Lucide icon).
+   - If the notice's `pinnedBy` array contains the current resident's ID, the pin displays solid amber (`fill-amber-500 text-amber-600 bg-amber-50 border-amber-200`).
+   - Toggling executes an **optimistic UI update**, instantly re-ordering cards before server confirmation, with seamless rollback on network failure.
+3. **Tri-Level Card Hierarchy**:
+   - Cards are automatically grouped into:
+     1. Priority Announcements (Pinned to top)
+     2. Personal Bookmarks (User-specific pins)
+     3. Chronological Notices (Recent first)
+
+---
+
+### 5.9 Branded PDF Invoice Receipt Layout Specifications (Payments.jsx)
+
+Official payment receipts are generated dynamically client-side using `jspdf` vector rendering for all `captured` bills:
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│  ██████████████████  SOCIETYPRO RESIDENT INVOICE  ██████████████████  │
+│  Deep Emerald Banner (#0F766E) • Height: 24pt • White Bold 14pt Text    │
+├────────────────────────────────────────────────────────────────────────┤
+│                                                                        │
+│  Society: Palm Grove Heights (PGH4821)       Date: 25 Sep 2026         │
+│  Resident: Rahul Sharma (Flat B-404)         Receipt #: REC-65012481   │
+│  Billing Month: October 2026                 Status: PAID & SETTLED   │
+│                                                                        │
+├────────────────────────────────────────────────────────────────────────┤
+│  CHARGE BREAKDOWN                                                      │
+│  ────────────────────────────────────────────────────────────────────  │
+│  1. Base Monthly Maintenance (850 sqft @ ₹2.50/sqft)        ₹2,125.00  │
+│  2. Allocated Parking Surcharge                               ₹300.00  │
+│  3. Water Supply & Common Area Utility Charges                ₹200.00  │
+│  ────────────────────────────────────────────────────────────────────  │
+│  TOTAL AMOUNT PAID:                                         ₹2,625.00  │
+│                                                                        │
+├────────────────────────────────────────────────────────────────────────┤
+│  ┌───────────────────────┐                                             │
+│  │   ★ OFFICIAL PAID ★   │  Razorpay Payment ID: pay_XYZ987654321      │
+│  │     SEAL / WATERMARK  │  Payment Gateway: Captured & Reconciled     │
+│  └───────────────────────┘                                             │
+│                                                                        │
+│  This is a computer-generated receipt issued by SocietyPro MERN Cloud. │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+- **Vector Precision**: Crisp typography at all zoom levels, zero pixelation.
+- **Auto-Download**: Triggered via `doc.save('Receipt_<month>_<unitNumber>.pdf')`.
+
+---
+
+### 5.10 Reactive Gatekeeper Polling UX (PendingApproval.jsx)
+
+When an unverified resident logs in, they are placed on the `PendingApproval.jsx` waiting screen:
+
+1. **Tactile Radar Animation**:
+   - Centered shield icon features dual concentric radar pulse rings (`animate-ping duration-3000 opacity-20 bg-teal-400`).
+2. **4-Second Heartbeat Polling**:
+   - Background hook triggers `GET /api/auth/check-status` every 4,000 ms.
+   - Shows subtle pulsing indicator: `"Checking approval status with committee..."`.
+3. **Instant Silent Session Refresh**:
+   - The moment committee approves the resident, the endpoint returns `{ status: 'active', token: <fresh_jwt> }`.
+   - The frontend silently writes the new active JWT into `localStorage`, clears the interval, flashes a green success state, and automatically navigates to `/dashboard` without requiring manual re-login.
 
 ### 6.1 Table Skeleton Loaders
 Administrative portals must never cause jarring layout jumps. Skeletons replicate the exact row height (48px) and column counts:

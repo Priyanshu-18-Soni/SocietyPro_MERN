@@ -157,17 +157,21 @@ const verifyPayment = async (req, res) => {
   }
 };
 
+// Compute dynamic maintenance amount for a resident (in Rupees)
+const computeResidentRate = (resident) => {
+  const base = resident.billingType === 'sqft_based'
+    ? (resident.sqftArea || 850) * (resident.ratePerSqft || 3.5)
+    : (resident.fixedRate || 2500);
+  return base + (resident.parkingCharges || 0) + (resident.waterCharges || 0);
+};
+
 // Generate a new bill (SocietyOwner or Committee with manageBills permission creates a bill for a resident)
 const generateBill = async (req, res) => {
   try {
     const { residentId, amount, unitNumber, month, dueDate } = req.body;
 
-    if (!residentId || !amount || !unitNumber || !month || !dueDate) {
-      return res.status(400).json({ message: 'Please provide all required fields: residentId, amount, unitNumber, month, dueDate' });
-    }
-
-    if (amount <= 0) {
-      return res.status(400).json({ message: 'Amount must be greater than zero' });
+    if (!residentId || !unitNumber || !month || !dueDate) {
+      return res.status(400).json({ message: 'Please provide all required fields: residentId, unitNumber, month, dueDate' });
     }
 
     // Atomic tenant scoping on resident retrieval
@@ -176,7 +180,17 @@ const generateBill = async (req, res) => {
       return res.status(404).json({ message: 'Resource not found' });
     }
 
-    const amountInPaise = Math.round(amount * 100);
+    // Auto-compute if amount not provided or zero; otherwise allow manual override
+    let finalAmount = Number(amount);
+    if (!finalAmount || finalAmount <= 0) {
+      finalAmount = computeResidentRate(resident);
+    }
+
+    if (finalAmount <= 0) {
+      return res.status(400).json({ message: 'Amount must be greater than zero' });
+    }
+
+    const amountInPaise = Math.round(finalAmount * 100);
 
     const bill = await Payment.create({
       societyId: req.user.societyId,
@@ -243,7 +257,11 @@ const getBills = async (req, res) => {
       dueDateDay: 10,
     };
 
-    const rawBills = await Payment.find(query).sort({ createdAt: -1 }).select('-__v');
+    const rawBills = await Payment.find(query)
+      .populate('societyId', 'name city societyCode address')
+      .populate('residentId', 'name email unitNumber')
+      .sort({ createdAt: -1 })
+      .select('-__v');
 
     const now = new Date();
     const bills = rawBills.map((bill) => {
@@ -349,12 +367,8 @@ const generateBulkBills = async (req, res) => {
     const { title, month, amount, dueDate, description } = req.body;
 
     // Validate required fields
-    if (!month || !amount || !dueDate) {
-      return res.status(400).json({ message: 'Please provide all required fields: month, amount, dueDate' });
-    }
-
-    if (Number(amount) <= 0 || isNaN(Number(amount))) {
-      return res.status(400).json({ message: 'Amount must be greater than zero' });
+    if (!month || !dueDate) {
+      return res.status(400).json({ message: 'Please provide all required fields: month, dueDate' });
     }
 
     // Query all active residents of this society
@@ -392,23 +406,25 @@ const generateBulkBills = async (req, res) => {
       });
     }
 
-    // Convert amount from Rupees to Paise (consistent with generateBill convention)
-    const amountInPaise = Math.round(Number(amount) * 100);
     const billTitle = title || `Maintenance - ${month}`;
+    const manualAmount = amount ? Number(amount) : 0;
 
-    // Construct bill documents for eligible residents
-    const newBills = eligibleResidents.map((resident) => ({
-      societyId: req.user.societyId,
-      residentId: resident._id,
-      amount: amountInPaise,
-      lateFee: 0,
-      currency: 'INR',
-      unitNumber: resident.unitNumber || 'N/A',
-      month: month.trim(),
-      dueDate: new Date(dueDate),
-      status: 'created',
-      description: description || billTitle,
-    }));
+    // Construct bill documents — dynamically compute each resident's rate
+    const newBills = eligibleResidents.map((resident) => {
+      const residentAmount = (manualAmount > 0) ? manualAmount : computeResidentRate(resident);
+      return {
+        societyId: req.user.societyId,
+        residentId: resident._id,
+        amount: Math.round(residentAmount * 100),
+        lateFee: 0,
+        currency: 'INR',
+        unitNumber: resident.unitNumber || 'N/A',
+        month: month.trim(),
+        dueDate: new Date(dueDate),
+        status: 'created',
+        description: description || billTitle,
+      };
+    });
 
     // Bulk insert
     await Payment.insertMany(newBills);
@@ -418,7 +434,6 @@ const generateBulkBills = async (req, res) => {
       totalCreated: newBills.length,
       skippedDuplicates,
       month: month.trim(),
-      amountPerResident: Number(amount),
     });
   } catch (err) {
     console.error(err);

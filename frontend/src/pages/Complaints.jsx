@@ -86,7 +86,7 @@ const Complaints = () => {
       );
       setNotification({
         type: 'success',
-        message: 'Your flat has been added to the affected flats list.',
+        message: response.data.message || 'Your vote has been updated.',
       });
     } catch (err) {
       console.error(err);
@@ -429,7 +429,14 @@ const Complaints = () => {
             const isProcessing = actionLoadingId === complaint._id;
             
             const affectedFlatsList = complaint.affectedFlats || [];
-            const hasUpvoted = currentUserFlat && affectedFlatsList.includes(currentUserFlat);
+            const upvotedByList = complaint.upvotedBy || [];
+            const hasUpvoted =
+              upvotedByList.some((uid) => String(uid?._id || uid?.id || uid) === String(currentUserId)) ||
+              (currentUserFlat && affectedFlatsList.includes(currentUserFlat));
+            const upvoteDisplayCount =
+              complaint.upvoteCount !== undefined && complaint.upvoteCount !== null
+                ? complaint.upvoteCount
+                : affectedFlatsList.length;
             const isExpanded = expandedId === complaint._id;
             const formattedDate = complaint.createdAt
               ? new Date(complaint.createdAt).toLocaleDateString('en-IN', {
@@ -491,18 +498,18 @@ const Complaints = () => {
                   <div className="self-start sm:self-auto shrink-0 mt-2 sm:mt-0">
                     <button
                       onClick={() => handleUpvote(complaint._id)}
-                      disabled={isProcessing || hasUpvoted}
+                      disabled={isProcessing}
                       className={`h-9 px-3.5 rounded-lg text-xs font-semibold flex items-center gap-2 border transition-all cursor-pointer active:scale-95 ${
                         hasUpvoted
                           ? 'bg-blue-50 text-blue-700 border-blue-300 font-bold'
                           : 'bg-white hover:bg-slate-50 text-charcoal border-border hover:border-slate-300'
                       } ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
-                      title={hasUpvoted ? 'You marked your flat as facing this issue' : 'Click to report your flat also faces this'}
+                      title={hasUpvoted ? 'Click to remove upvote' : 'Click to report your flat also faces this'}
                     >
                       <ThumbsUp className={`w-3.5 h-3.5 ${hasUpvoted ? 'fill-blue-700 text-blue-700' : 'text-slate'}`} />
                       <span>{hasUpvoted ? 'Facing Issue' : 'Facing Same Issue'}</span>
                       <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-800 border border-slate-200">
-                        {affectedFlatsList.length}
+                        {upvoteDisplayCount}
                       </span>
                     </button>
                   </div>

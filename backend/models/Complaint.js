@@ -30,6 +30,14 @@ const complaintSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    upvotedBy: {
+      type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+      default: [],
+    },
+    upvoteCount: {
+      type: Number,
+      default: 0,
+    },
     affectedFlats: {
       type: [{ type: String }],
       default: [],

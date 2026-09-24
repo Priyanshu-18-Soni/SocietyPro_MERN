@@ -255,18 +255,21 @@ Request → tenantMiddleware (JWT decode + societyId bind)
 
 1. Client submits: `name`, `email`, `password`, `societyCode`, `unitNumber` (optional).
 2. Server validates `societyCode` against the `Society` collection — returns 400 if no match.
-3. Password hashed; `User` created with `role: 'Resident'` and `societyId` from the matched society.
-4. JWT returned immediately (no pending/approval state — see §11 for planned gatekeeper lifecycle).
+3. Password hashed; `User` created with `role: 'Resident'`, `societyId` from the matched society, and initial `status: 'pending'`.
+4. Rate profile initialized with defaults: `sqftArea: 850`, `billingType: 'fixed'`, `fixedRate: 2500`, `ratePerSqft: 3.5`, `parkingCharges: 300`, `waterCharges: 200`.
+5. JWT signed carrying `{ id, role, societyId, permissions, status: 'pending', unitNumber }`.
+6. Resident redirected to `/pending-approval`. Protected resource routes enforce `requireActiveUser` and return HTTP 403 `ACCOUNT_INACTIVE`.
 
-**Gatekeeper Lifecycle (Planned):**
+#### 6.1.3 Reactive Gatekeeper Polling & Auto-Activation (`GET /api/auth/check-status`)
 
-```
-Resident submits registration
-    → status: 'pending'
-    → Committee/Owner notified
-    → Approves: status: 'active', JWT issued
-    → Rejects: account removed
-```
+**Flow:**
+
+1. The `/pending-approval` page executes an automatic 4-second interval poll to `GET /api/auth/check-status` (authenticated via `tenantMiddleware`).
+2. Server queries DB for the user:
+   - If `user.status === 'pending'`, returns `{ status: 'pending', token: null, user }`.
+   - Once a SocietyOwner or Committee member approves the resident via `PATCH /api/users/residents/:id/approve`, `user.status` transitions to `'active'`.
+   - `check-status` detects `user.status === 'active'` while token had `'pending'`. It dynamically issues a fresh JWT with `status: 'active'`.
+3. Client receives the fresh JWT token, updates `localStorage` and `AuthContext` via `login(freshToken, updatedUser)`, and immediately navigates to `/dashboard` without requiring manual re-login.
 
 ---
 
@@ -386,50 +389,70 @@ Base path: `/api/payments`
 
 SocietyPro uses Razorpay as its payment gateway. All monetary amounts are stored internally in **Paise** (1 INR = 100 Paise).
 
-#### 6.5.1 Admin Bill Generation (`POST /api/payments/generate-bill`)
+#### 6.5.1 Automated Resident Maintenance Rate Engine
+
+Each resident profile in the `User` collection maintains rate configuration parameters:
+- `sqftArea`: Carpet area in square feet (default: `850`)
+- `billingType`: Rate calculation model (`'fixed'` or `'sqft_based'`, default: `'fixed'`)
+- `fixedRate`: Flat maintenance charge in INR (default: `2500`)
+- `ratePerSqft`: Per square foot rate in INR (default: `3.5`)
+- `parkingCharges`: Monthly parking slot assessment in INR (default: `300`)
+- `waterCharges`: Monthly water utility assessment in INR (default: `200`)
+
+**Dynamic Calculation Formula:**
+```
+Base = (resident.billingType === 'sqft_based')
+       ? (resident.sqftArea * resident.ratePerSqft)
+       : resident.fixedRate
+
+Total (INR) = Base + resident.parkingCharges + resident.waterCharges
+Total (Paise) = Math.round(Total * 100)
+```
+
+#### 6.5.2 Admin Individual Bill Generation (`POST /api/payments/generate-bill`)
 
 **Access:** SocietyOwner or Committee with `manageBills`.
 
 **Flow:**
+1. Admin provides: `residentId`, `unitNumber`, `month` (e.g., `"October 2026"`), `dueDate` (ISO date), and optional `amount` (INR).
+2. If `amount` is not provided or zero, server auto-computes `amount` using the resident's dynamic rate engine profile. If provided, manual override is respected.
+3. Server validates tenant isolation: `resident.societyId === req.user.societyId`.
+4. `amount` converted to Paise: `Math.round(amount * 100)`.
+5. `Payment` document created with `status: 'created'`.
 
-1. Admin provides: `residentId`, `amount` (INR), `unitNumber`, `month` (e.g., `"September 2026"`), `dueDate` (ISO date).
-2. Server validates: all fields required; `amount > 0`; `resident.societyId === req.user.societyId`.
-3. `amount` converted to Paise: `Math.round(amount * 100)`.
-4. `Payment` document created with `status: 'created'`.
-5. No Razorpay order is created at this stage — this is a pure ledger entry. Payment is initiated separately by the resident.
+#### 6.5.3 1-Click Multi-Resident Dynamic Bulk Billing (`POST /api/payments/generate-bulk-bills`)
 
-**Use cases:** Monthly maintenance bills, one-time levies (special assessments, event fees).
+**Access:** SocietyOwner or Committee with `manageBills`.
 
----
+**Flow:**
+1. Admin submits: `title`, `month` (e.g. `"October 2026"`), `dueDate`, optional `description`, optional `amount` override.
+2. Server queries all active residents belonging to `req.user.societyId`.
+3. Existing bills for the targeted `month` are inspected to prevent double-invoicing.
+4. For each eligible resident, maintenance dues are calculated dynamically based on their individual flat area & rate configuration (or manual override if specified).
+5. All bills inserted via atomic batch `Payment.insertMany()`.
+6. Response returns `{ message, totalCreated, skippedDuplicates, month }`.
 
-#### 6.5.2 Resident Payment Initiation (`POST /api/payments/create-order`)
+#### 6.5.4 Resident Payment Initiation (`POST /api/payments/create-order`)
 
 **Access:** Residents only.
 
 **Flow:**
+1. Resident provides `billId`.
+2. Server verifies tenant and resident scoping, checks overdue status against society late fee policy, and creates a Razorpay `order`.
+3. Response returns: `orderId`, `amount` (Paise), `currency: 'INR'`, `key` (Razorpay public key ID), `paymentRecordId`.
+4. Frontend launches Razorpay Checkout JS widget.
 
-1. Resident provides `amount` (INR).
-2. Server converts to Paise, creates a Razorpay `order` via the SDK.
-3. A `Payment` document is created with `razorpayOrderId` and `status: 'created'`.
-4. Response returns: `orderId`, `amount` (Paise), `currency: 'INR'`, `key` (Razorpay public key ID), `paymentRecordId`.
-5. Frontend uses returned data to open Razorpay Checkout JS widget.
-
----
-
-#### 6.5.3 Payment Verification (`POST /api/payments/verify`)
+#### 6.5.5 Payment Verification (`POST /api/payments/verify`)
 
 **Access:** Residents only.
 
 **Flow:**
-
 1. After Razorpay checkout completes, frontend posts: `razorpay_order_id`, `razorpay_payment_id`, `razorpay_signature`.
 2. Server recomputes HMAC-SHA256 of `"${order_id}|${payment_id}"` using `RAZORPAY_KEY_SECRET`.
-3. **Signature match** → `Payment.status` updated to `'captured'`; `razorpayPaymentId` stored.
+3. **Signature match** → `Payment.status` updated to `'captured'`; `razorpayPaymentId` stored. Auto-credits Treasury Ledger.
 4. **Signature mismatch** → `Payment.status` updated to `'failed'`; HTTP 400 returned.
 
----
-
-#### 6.5.4 Payment History (`GET /api/payments/`)
+#### 6.5.6 Payment History (`GET /api/payments/`)
 
 **Role-scoped filtering (enforced in controller):**
 
@@ -440,11 +463,21 @@ SocietyPro uses Razorpay as its payment gateway. All monetary amounts are stored
 | `Committee` with `manageBills` | `societyId: req.user.societyId` (all records in society) |
 | `Committee` without `manageBills` | HTTP 403 |
 
-Optional query filter: `?status=created|authorized|captured|failed`.
+Enriched with populated `societyId` (name, address, city, societyCode) and `residentId` (name, email, unitNumber).
 
----
+#### 6.5.7 Client-Side Branded Maintenance Invoice PDF Export
 
-#### 6.5.5 Payment Status Lifecycle
+**Capability:** Available for all bills with `status: 'captured'`.
+**Engine:** `jspdf` client-side vector document generation.
+**Contents:**
+- Branded Society Letterhead (Society Name, Join Code, Full Address, City)
+- Official Header: "MAINTENANCE INVOICE & RECEIPT"
+- Two-Column Metadata Matrix: Receipt ID (`RCPT-...`), Month, Issued Date, Payment Timestamp, Resident Name, Unit Number, Email, Account Status
+- Itemized Financial Schedule: Maintenance Assessment, Common Amenities/Utilities, Accrued Late Penalty, Total INR Paid
+- Official Emerald Verification Badge: "PAID - OFFICIAL SETTLEMENT RECORD", Razorpay Gateway Reference ID, Verification Timestamp
+- Digital Seal Notice: Legally valid computer-generated receipt with automated filename formatting.
+
+#### 6.5.8 Payment Status Lifecycle
 
 ```
 created ────────────────────────────────────────────► failed
@@ -488,112 +521,102 @@ else: lateFee = (principal × ratePercentPerYear) / 365 / 100 × chargeableDays
 
 ---
 
-### 6.7 Grievance Redressal Engine
+### 6.7 Grievance Redressal V2 Engine
 
-> **Status: Planned Module** — No backend model or controller exists yet. This section defines the full target specification.
+Base path: `/api/complaints`  
+Middleware: `tenantMiddleware` + `requireActiveUser` (all routes)
 
-#### 6.7.1 Data Model (Planned: `Complaint` Collection)
+#### 6.7.1 Data Model (`Complaint` Collection)
 
-```
+```js
 Complaint {
-  societyId:        ObjectId (ref: Society)   [tenant key]
-  raisedBy:         ObjectId (ref: User)      [Resident]
-  unitNumber:       String                    [denormalized for display]
-  title:            String                    [required]
-  description:      String                    [required]
-  category:         Enum ['maintenance', 'security', 'sanitation', 'noise', 'other']
-  status:           Enum ['open', 'in_progress', 'resolved', 'closed', 'reopened']
-  priority:         Enum ['low', 'medium', 'high', 'critical']
-  facingSameIssue:  [ObjectId]                [array of Resident _ids who upvoted]
-  facingFlats:      [String]                  [unit numbers of upvoting residents]
-  resolutionNote:   String                    [written by Committee/Owner]
-  resolvedAt:       Date
-  residentVerdict:  Enum ['confirmed', 'reopened', null]
-  verdictAt:        Date
-  createdAt:        Date
-  updatedAt:        Date
+  societyId:     ObjectId (ref: 'Society', required, indexed),
+  createdBy:     ObjectId (ref: 'User', required),
+  flatNo:        String (required),
+  title:         String (required, trim),
+  description:   String (required),
+  imageUrl:      String (default: null),
+  upvotedBy:     [{ type: ObjectId, ref: 'User' }],
+  upvoteCount:   Number (default: 0),
+  affectedFlats: [{ type: String }],
+  status:        Enum ['open', 'in_progress', 'resolved', 'closed'] (default: 'open', indexed),
+  verdict:       Enum ['pending', 'confirmed', 'reopened'] (default: 'pending'),
+  createdAt:     Date,
+  updatedAt:     Date,
 }
 ```
 
-#### 6.7.2 Status Lifecycle
+#### 6.7.2 Status & Two-Phase Verdict Resolution Lifecycle
 
 ```
 open
  │
- ├─► in_progress  (Committee/Owner picks up the complaint)
+ ├─► in_progress  (Committee/Owner with resolveComplaints)
  │       │
- │       └─► resolved  (Committee/Owner marks resolved + resolutionNote)
+ │       └─► resolved  (Committee/Owner marks resolved)
  │                │
- │                ├─► closed    (Resident confirms → residentVerdict: 'confirmed')
- │                └─► reopened  (Resident disputes → residentVerdict: 'reopened')
+ │                ├─► closed  (Resident confirms → verdict: 'confirmed' → status: 'closed')
+ │                └─► open    (Resident disputes → verdict: 'reopened'   → status: 'open')
  │
- └─► closed  (Admin closes without resolution note — low priority)
+ └─► closed  (Admin direct resolution)
 ```
 
 #### 6.7.3 Functional Requirements
 
-| Requirement | Access |
-|---|---|
-| File a new complaint | Resident (own society) |
-| View all complaints in society | SocietyOwner, Committee (`resolveComplaints`) |
-| View own complaints | Resident |
-| Update complaint status / add resolution note | Committee (`resolveComplaints`), SocietyOwner |
-| "Facing Same Issue" upvote | Any Resident in the same society (once per flat per complaint) |
-| Confirm resolution | The original `raisedBy` Resident only |
-| Reopen complaint | The original `raisedBy` Resident only (within 7 days of resolution) |
-| View upvote count and affected flats | SocietyOwner, Committee (`resolveComplaints`) |
+| Requirement | Route | Access |
+|---|---|---|
+| File a new grievance ticket | `POST /api/complaints` | All active residents |
+| List grievances (with status filter) | `GET /api/complaints` | All authenticated active users in society |
+| "Facing Same Issue" upvote toggle | `PATCH /api/complaints/:id/upvote` | All active residents (idempotent user-level toggle) |
+| Update grievance status | `PATCH /api/complaints/:id/status` | Committee (`resolveComplaints`), SocietyOwner |
+| Two-phase verdict resolution | `PATCH /api/complaints/:id/verdict` | Original ticket creator only |
 
 #### 6.7.4 Business Rules
 
-- A resident may upvote any complaint that is **not** their own, provided their `unitNumber` has not already upvoted the same complaint (`facingFlats` deduplication).
-- The "Facing Same Issue" count surfaces complaints impacting multiple flats, helping the committee triage by impact.
-- Only the **original complainant** may confirm resolution or reopen. This prevents committee self-certification of disputed resolutions.
-- Reopen window: 7 days post-`resolvedAt`. After that, the complaint auto-closes.
+- **Photo Proof:** Tickets can include an optional image attachment URL (`imageUrl`).
+- **Idempotent Upvoting:** `PATCH /api/complaints/:id/upvote` checks `upvotedBy` array. If user has already upvoted, the upvote is retracted (decrementing `upvoteCount` and pruning `affectedFlats`). If not upvoted, user ID is appended, incrementing `upvoteCount`.
+- **Verdict Modification Restricted to Author:** Only the user who filed the ticket (`complaint.createdBy === req.user.id`) can submit a verdict. Non-creators receive HTTP 403.
+- **State Automation:** Submitting `{ verdict: 'confirmed' }` automatically transitions status to `'closed'`. Submitting `{ verdict: 'reopened' }` transitions status back to `'open'`.
 
 ---
 
-### 6.8 Notice Board
+### 6.8 Notice Board & Resident Bookmarking
 
-> **Status: Planned Module** — No backend model or controller exists yet. This section defines the full target specification.
+Base path: `/api/notices`  
+Middleware: `tenantMiddleware` + `requireActiveUser` (all routes)
 
-#### 6.8.1 Data Model (Planned: `Notice` Collection)
+#### 6.8.1 Data Model (`Notice` Collection)
 
-```
+```js
 Notice {
-  societyId:    ObjectId (ref: Society)   [tenant key]
-  createdBy:    ObjectId (ref: User)      [Committee/Owner]
-  title:        String (required)
-  body:         String (required)
-  category:     Enum ['general', 'urgent', 'maintenance', 'event', 'financial']
-  isPinned:     Boolean (default: false)  [admin-controlled]
-  pinnedAt:     Date
-  expiresAt:    Date (optional)           [notice auto-hides after this date]
-  attachments:  [String]                  [file URLs, planned]
-  bookmarkedBy: [ObjectId]                [Resident _ids who bookmarked]
-  createdAt:    Date
-  updatedAt:    Date
+  societyId:   ObjectId (ref: 'Society', required, indexed),
+  title:       String (required, trim),
+  body:        String (required),
+  isPriority:  Boolean (default: false, indexed),
+  pinnedBy:    [{ type: ObjectId, ref: 'User' }],
+  createdBy:   ObjectId (ref: 'User', required),
+  createdAt:   Date,
+  updatedAt:   Date,
 }
 ```
 
 #### 6.8.2 Functional Requirements
 
-| Requirement | Access |
-|---|---|
-| Post a notice | SocietyOwner, Committee (`manageNotices`) |
-| Edit a notice | Notice creator or SocietyOwner |
-| Delete a notice | SocietyOwner, Committee (`manageNotices`) |
-| Pin / unpin a notice | SocietyOwner, Committee (`manageNotices`) |
-| View all notices (sorted: pinned first, then chronological) | All authenticated users in society |
-| Bookmark a notice (personal) | Resident |
-| View bookmarked notices | Resident (own bookmarks only) |
+| Requirement | Route | Access |
+|---|---|---|
+| Get all notices (tri-level sorted) | `GET /api/notices` | All authenticated active users in society |
+| Broadcast new notice | `POST /api/notices` | SocietyOwner, Committee (`manageNotices`) |
+| Toggle personal bookmark/pin | `PATCH /api/notices/:id/pin` | All active users (toggles user ID in `pinnedBy`) |
+| Delete notice | `DELETE /api/notices/:id` | SocietyOwner, Committee (`manageNotices`) |
 
-#### 6.8.3 Business Rules
+#### 6.8.3 Tri-Level Sort Order & Optimistic UI
 
-- **Pinned notices** always appear at the top of the notice board, sorted by `pinnedAt DESC`.
-- Unpinned notices are sorted by `createdAt DESC`.
-- `expiresAt` is optional; expired notices are hidden from the default listing but accessible via an `?includeExpired=true` admin query.
-- **Bookmarks** are personal — stored as `bookmarkedBy[]` on the `Notice` document. A resident cannot see other residents' bookmarks.
-- Residents **cannot** create or edit notices — they are read-only consumers.
+- Notices are retrieved with a **3-tier sorting hierarchy**:
+  1. **Priority notices first:** `isPriority === true`
+  2. **Personally pinned notices second:** notices where current user's ID exists in `pinnedBy`
+  3. **Recent notices third:** sorted by `createdAt DESC`
+- **Optimistic UI:** When toggling bookmark on the frontend (`Notices.jsx`), the pin indicator updates instantaneously in local state before the PATCH request completes. If the server call fails, local state automatically reverts.
+- Residents **cannot** create, edit, or delete notices — they consume announcements and bookmark items to their personal dashboard.
 
 ---
 
@@ -604,8 +627,9 @@ Notice {
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | `POST` | `/register-owner` | None | Register society + owner atomically |
-| `POST` | `/register-resident` | None | Self-register as resident via societyCode |
+| `POST` | `/register-resident` | None | Self-register as resident via societyCode (status: 'pending') |
 | `POST` | `/login` | None | Authenticate; receive JWT |
+| `GET` | `/check-status` | `tenantMiddleware` | Reactive gatekeeper polling; verifies status & issues fresh JWT on approval |
 
 ### Society Routes — `/api/society`
 
@@ -633,20 +657,51 @@ Notice {
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | `GET` | `/` | `manageResidents` | List all society users |
+| `GET` | `/residents/pending` | `manageResidents` | Retrieve all pending resident approval requests |
+| `PATCH` | `/residents/:id/approve` | `manageResidents` | Approve resident registration (`status: 'active'`) |
+| `PATCH` | `/residents/:id/reject` | `manageResidents` | Reject resident registration (`status: 'rejected'`) |
 | `GET` | `/:id` | `manageResidents` | Get user by ID |
 | `PATCH` | `/:id` | `manageResidents` | Update user name/unitNumber |
 | `DELETE` | `/:id` | `manageResidents` | Remove user |
 | `PATCH` | `/:id/rate` | `manageResidents` | Set or reset custom rate for resident |
 | `GET` | `/:id/rate` | `manageResidents` or self | Get resident's effective rate |
 
-### Payment Routes — `/api/payments`
+### Payment & Billing Routes — `/api/payments`
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | `POST` | `/create-order` | Resident | Create Razorpay order |
 | `POST` | `/verify` | Resident | Verify payment HMAC signature |
-| `POST` | `/generate-bill` | SocietyOwner, `manageBills` | Generate maintenance bill |
-| `GET` | `/` | All roles (scoped) | Get payment history |
+| `POST` | `/generate-bill` | SocietyOwner, `manageBills` | Generate maintenance bill (auto-computed or manual) |
+| `POST` | `/generate-bulk-bills` | SocietyOwner, `manageBills` | 1-Click dynamic multi-resident bill generation |
+| `GET` | `/` | All roles (scoped) | Get payment history with populated society & resident details |
+| `POST` | `/webhook` | Razorpay HMAC | Automated payment capture & automatic treasury ledger crediting |
+
+### Grievance Routes — `/api/complaints`
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `POST` | `/` | All active users | File a new grievance ticket with optional image |
+| `GET` | `/` | All active users | List grievances (supports `?status=` query filter) |
+| `PATCH` | `/:id/upvote` | All active users | Toggle upvote on complaint |
+| `PATCH` | `/:id/status` | `resolveComplaints` | Update grievance status (`open` -> `in_progress` -> `resolved` -> `closed`) |
+| `PATCH` | `/:id/verdict` | Ticket creator only | Submit two-phase verdict (`confirmed` -> closes ticket; `reopened` -> opens ticket) |
+
+### Notice Routes — `/api/notices`
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/` | All active users | Get notices (tri-level sorted: Priority -> Pinned -> Recent) |
+| `POST` | `/` | `manageNotices` | Broadcast a community notice with priority flag |
+| `PATCH` | `/:id/pin` | All active users | Toggle user personal bookmark/pin |
+| `DELETE` | `/:id` | `manageNotices` | Delete notice |
+
+### Treasury Ledger Routes — `/api/finances`
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `POST` | `/expenses` | `manageBills` | Record society operational expense in ledger |
+| `GET` | `/metrics` | All active users | Retrieve treasury summary (income, expenses, net balance) |
 
 ---
 
@@ -734,12 +789,20 @@ Notice {
   passwordHash:    String (required),
   role:            Enum ['SocietyOwner', 'Committee', 'Resident'] (required),
   societyId:       ObjectId → Society (required),
+  status:          Enum ['pending', 'active', 'rejected'] (default: 'active'),
   customLabel:     String (Committee — e.g. "Secretary"),
   permissions:     [String] (Committee — e.g. ['manageBills', 'manageResidents']),
   unitNumber:      String (Resident — flat/unit identifier),
+  sqftArea:        Number (default: 850),
+  billingType:     Enum ['fixed', 'sqft_based'] (default: 'fixed'),
+  fixedRate:       Number (default: 2500),
+  ratePerSqft:     Number (default: 3.5),
+  parkingCharges:  Number (default: 300),
+  waterCharges:    Number (default: 200),
   customRateItems: [{ name: String, amount: Number, gstApplicable: Boolean }],
   usingCustomRate: Boolean (default: false),
   createdAt:       Date,
+  updatedAt:       Date,
 }
 ```
 
@@ -747,53 +810,102 @@ Notice {
 
 ```js
 {
-  societyId:         ObjectId → Society (required),
-  residentId:        ObjectId → User (required),
-  amount:            Number (required) — STORED IN PAISE,
+  societyId:         ObjectId → Society (required, indexed),
+  residentId:        ObjectId → User (required, indexed),
+  amount:            Number (required) — STORED STRICTLY IN PAISE,
+  lateFee:           Number (default: 0) — STORED STRICTLY IN PAISE,
   currency:          String (default: 'INR'),
-  razorpayOrderId:   String,
+  razorpayOrderId:   String (sparse index),
   razorpayPaymentId: String,
   status:            Enum ['created', 'authorized', 'captured', 'failed'] (default: 'created'),
   unitNumber:        String (required),
-  month:             String (required — e.g. "September 2026"),
+  month:             String (required — e.g. "October 2026"),
   dueDate:           Date (required),
+  description:       String,
   createdAt:         Date,
   updatedAt:         Date,
 }
 ```
 
-### 9.4 Planned: `Complaint`
+### 9.4 `Complaint`
 
-See §6.7.1 for the full schema specification.
+```js
+{
+  societyId:     ObjectId → Society (required, indexed),
+  createdBy:     ObjectId → User (required),
+  flatNo:        String (required),
+  title:         String (required, trim),
+  description:   String (required),
+  imageUrl:      String (default: null),
+  upvotedBy:     [{ type: ObjectId, ref: 'User' }],
+  upvoteCount:   Number (default: 0),
+  affectedFlats: [{ type: String }],
+  status:        Enum ['open', 'in_progress', 'resolved', 'closed'] (default: 'open'),
+  verdict:       Enum ['pending', 'confirmed', 'reopened'] (default: 'pending'),
+  createdAt:     Date,
+  updatedAt:     Date,
+}
+```
 
-### 9.5 Planned: `Notice`
+### 9.5 `Notice`
 
-See §6.8.1 for the full schema specification.
+```js
+{
+  societyId:   ObjectId → Society (required, indexed),
+  title:       String (required, trim),
+  body:        String (required),
+  isPriority:  Boolean (default: false, indexed),
+  pinnedBy:    [{ type: ObjectId, ref: 'User' }],
+  createdBy:   ObjectId → User (required),
+  createdAt:   Date,
+  updatedAt:   Date,
+}
+```
+
+### 9.6 `Ledger`
+
+```js
+{
+  societyId:       ObjectId → Society (required, indexed),
+  type:            Enum ['income', 'expense'] (required),
+  category:        String (required),
+  amountInPaise:   Number (required) — STORED STRICTLY IN PAISE,
+  paymentMethod:   Enum ['razorpay', 'cash', 'bank_transfer', 'cheque', 'upi', 'other'],
+  referenceBillId: ObjectId → Payment (optional),
+  description:     String,
+  recordedBy:      ObjectId → User (required),
+  createdAt:       Date,
+  updatedAt:       Date,
+}
+```
 
 ---
 
 ## 10. Frontend Pages & Navigation
 
-### Current Pages
+### Production Pages
 
 | Route | Page Component | Access | Description |
 |---|---|---|---|
 | `/login` | `Login.jsx` | Public | Email + password login |
 | `/register` | `Register.jsx` | Public | Owner registration OR resident self-registration (tab switcher) |
-| `/` | `Dashboard.jsx` | All roles | Role-contextual summary: bills, society info, quick links |
+| `/pending-approval` | `PendingApproval.jsx` | Pending Residents | Auto-polling (4s) gatekeeper screen with automated token activation |
+| `/` | `Dashboard.jsx` | All authenticated roles | Role-contextual analytics, recent notices, complaints, and ledger metrics |
+| `/dashboard` | `Dashboard.jsx` | All authenticated roles | Explicit route alias for dashboard |
 | `/societies` | `SocietyManagement.jsx` | SocietyOwner, Committee | View/edit society profile, default rates, late fee settings |
 | `/committee` | `CommitteeManagement.jsx` | SocietyOwner | Create/manage committee members and permissions |
-| `/residents` | `ResidentManagement.jsx` | SocietyOwner* | View residents, set custom rates |
-| `/payments` | `Payments.jsx` | All roles (scoped) | View bills, initiate payments (Resident); view all payments, generate bills (Admin) |
-
-*Note: The `/residents` route is currently guarded by `allowedRoles={['SocietyAdmin']}` which is a non-existent role. This makes `ResidentManagement.jsx` inaccessible to all users. **Fix required:** change `'SocietyAdmin'` → `'SocietyOwner'` in `App.jsx` line 63.
+| `/residents` | `ResidentManagement.jsx` | SocietyOwner, Committee | View residents, pending approvals tab, custom rates |
+| `/payments` | `Payments.jsx` | All roles (scoped) | Dynamic bulk billing, Razorpay checkout, branded PDF receipt generator |
+| `/complaints` | `Complaints.jsx` | All active users | Grievance cell: photo proofs, upvotes, two-phase resolution verdicts |
+| `/notices` | `Notices.jsx` | All active users | Tri-level notice board with personal bookmarking & priority alerts |
+| `/ledger` | `Ledger.jsx` | All active users | Treasury management: income/expense bookkeeping & net balance metrics |
 
 ### Shared Components
 
 | Component | Purpose |
 |---|---|
-| `Layout.jsx` | Sidebar navigation, header, responsive shell |
-| `ProtectedRoute.jsx` | Redirects unauthenticated users to `/login`; enforces `allowedRoles` prop |
+| `Layout.jsx` | Sidebar navigation, role-scoped links, header, responsive shell |
+| `ProtectedRoute.jsx` | Redirects unauthenticated users to `/login`; enforces role permissions |
 
 ### Planned Pages
 

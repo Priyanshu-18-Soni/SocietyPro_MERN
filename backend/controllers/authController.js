@@ -186,4 +186,48 @@ const loginUser = async (req, res) => {
   }
 };
 
-module.exports = { registerOwner, registerResident, loginUser };
+const checkStatus = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // If user is now active but the token was issued with pending status, refresh the token
+    let freshToken = null;
+    if (user.status === 'active' && req.user.status !== 'active') {
+      freshToken = jwt.sign(
+        {
+          id: user._id,
+          role: user.role,
+          societyId: user.societyId,
+          permissions: user.permissions,
+          status: user.status,
+          unitNumber: user.unitNumber,
+        },
+        process.env.JWT_SECRET,
+        { expiresIn: '7d' }
+      );
+    }
+
+    res.status(200).json({
+      status: user.status,
+      token: freshToken,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        societyId: user.societyId,
+        unitNumber: user.unitNumber,
+        permissions: user.permissions || [],
+        status: user.status,
+      },
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error checking status' });
+  }
+};
+
+module.exports = { registerOwner, registerResident, loginUser, checkStatus };

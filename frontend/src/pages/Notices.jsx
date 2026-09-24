@@ -76,21 +76,35 @@ const Notices = () => {
     );
   };
 
-  // Pin / Bookmark Toggle
+  // Pin / Bookmark Toggle with Optimistic UI Update
   const handleTogglePin = async (noticeId) => {
     setActionLoadingId(noticeId);
+
+    // Save previous state for rollback on error
+    const previousNotices = [...notices];
+
+    // Optimistically toggle pinnedBy in local state
+    setNotices((prev) =>
+      prev.map((n) => {
+        if (n._id !== noticeId) return n;
+        const pinned = isNoticePinned(n);
+        const newPinnedBy = pinned
+          ? (n.pinnedBy || []).filter((uid) => String(uid?._id || uid?.id || uid) !== String(currentUserId))
+          : [...(n.pinnedBy || []), currentUserId];
+        return { ...n, pinnedBy: newPinnedBy };
+      })
+    );
+
     try {
       const response = await axiosInstance.patch(`/notices/${noticeId}/pin`);
       const { isPinned, notice: updatedNotice } = response.data;
       
-      setNotices((prev) =>
-        prev.map((n) => (n._id === noticeId ? (updatedNotice || {
-          ...n,
-          pinnedBy: isPinned
-            ? [...(n.pinnedBy || []), currentUserId]
-            : (n.pinnedBy || []).filter((uid) => String(uid?._id || uid?.id || uid) !== String(currentUserId)),
-        }) : n))
-      );
+      // Reconcile with server response
+      if (updatedNotice) {
+        setNotices((prev) =>
+          prev.map((n) => (n._id === noticeId ? updatedNotice : n))
+        );
+      }
 
       setNotification({
         type: 'success',
@@ -98,6 +112,8 @@ const Notices = () => {
       });
     } catch (err) {
       console.error(err);
+      // Revert optimistic change on failure
+      setNotices(previousNotices);
       setNotification({
         type: 'error',
         message: err.response?.data?.message || 'Failed to toggle notice pin status.',

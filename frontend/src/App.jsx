@@ -37,6 +37,16 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute>
+                <Layout>
+                  <Dashboard />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
 
           {/* Protected Society Profile Route (SocietyOwner and Committee) */}
           <Route
