@@ -3,6 +3,8 @@ const router = express.Router();
 const tenantMiddleware = require('../middleware/tenantMiddleware');
 const requireActiveUser = require('../middleware/requireActiveUser');
 const requirePermission = require('../middleware/requirePermission');
+const validate = require('../middleware/validate');
+const { recordExpenseSchema } = require('../validations/schemas');
 const {
   recordExpense,
   getFinancialMetrics,
@@ -25,6 +27,7 @@ router.post(
     }
     return res.status(403).json({ message: 'Access denied. Missing required permission to manage treasury' });
   },
+  validate(recordExpenseSchema),
   recordExpense
 );
 

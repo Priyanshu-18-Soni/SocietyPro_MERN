@@ -43,11 +43,86 @@ const Complaints = () => {
   const [createFormData, setCreateFormData] = useState({
     title: '',
     description: '',
-    imageUrl: '',
   });
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [filePreviewUrl, setFilePreviewUrl] = useState(null);
+  const [fileError, setFileError] = useState('');
   const [createFormErrors, setCreateFormErrors] = useState({});
   const [createSubmitLoading, setCreateSubmitLoading] = useState(false);
   const [createSubmitError, setCreateSubmitError] = useState('');
+
+  // Helper to resolve image URL with backward compatibility
+  const getImageUrl = (url) => {
+    if (!url) return null;
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return url;
+    }
+    const apiBase = import.meta.env.VITE_API_BASE_URL;
+    if (apiBase) {
+      const host = apiBase.replace(/\/api\/?$/, '');
+      return `${host}${url.startsWith('/') ? '' : '/'}${url}`;
+    }
+    return url;
+  };
+
+  // Revoke object URL on unmount or file change to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      if (filePreviewUrl) {
+        URL.revokeObjectURL(filePreviewUrl);
+      }
+    };
+  }, [filePreviewUrl]);
+
+  const handleFileChange = (e) => {
+    const file = e.target.files?.[0];
+    setFileError('');
+
+    if (filePreviewUrl) {
+      URL.revokeObjectURL(filePreviewUrl);
+      setFilePreviewUrl(null);
+    }
+
+    if (!file) {
+      setSelectedFile(null);
+      return;
+    }
+
+    const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!validTypes.includes(file.type)) {
+      setFileError('Invalid file type. Only JPEG, PNG, and WebP images are allowed.');
+      setSelectedFile(null);
+      e.target.value = '';
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setFileError('File size exceeds the maximum limit of 5MB.');
+      setSelectedFile(null);
+      e.target.value = '';
+      return;
+    }
+
+    setSelectedFile(file);
+    const objectUrl = URL.createObjectURL(file);
+    setFilePreviewUrl(objectUrl);
+  };
+
+  const handleClearFile = () => {
+    if (filePreviewUrl) {
+      URL.revokeObjectURL(filePreviewUrl);
+    }
+    setSelectedFile(null);
+    setFilePreviewUrl(null);
+    setFileError('');
+  };
+
+  const resetCreateForm = () => {
+    setCreateFormData({ title: '', description: '' });
+    handleClearFile();
+    setCreateFormErrors({});
+    setCreateSubmitError('');
+  };
 
   // Fetch Complaints based on activeTab
   const fetchComplaints = async () => {
@@ -149,11 +224,13 @@ const Complaints = () => {
     }
   };
 
-  // Submit New Complaint
+  // Submit New Complaint via FormData
   const handleCreateSubmit = async (e) => {
     e.preventDefault();
     setCreateSubmitError('');
-    
+
+    if (fileError) return;
+
     const errors = {};
     if (!createFormData.title.trim()) errors.title = 'Title is required';
     if (!createFormData.description.trim()) errors.description = 'Description is required';
@@ -162,15 +239,19 @@ const Complaints = () => {
 
     setCreateSubmitLoading(true);
     try {
-      const payload = {
-        title: createFormData.title.trim(),
-        description: createFormData.description.trim(),
-        imageUrl: createFormData.imageUrl.trim() || undefined,
-      };
+      const formData = new FormData();
+      formData.append('title', createFormData.title.trim());
+      formData.append('description', createFormData.description.trim());
+      if (currentUserFlat) {
+        formData.append('flatNo', currentUserFlat);
+      }
+      if (selectedFile) {
+        formData.append('image', selectedFile);
+      }
 
-      await axiosInstance.post('/complaints', payload);
+      await axiosInstance.post('/complaints', formData);
       setIsCreateModalOpen(false);
-      setCreateFormData({ title: '', description: '', imageUrl: '' });
+      resetCreateForm();
       setNotification({
         type: 'success',
         message: 'Grievance ticket filed successfully!',
@@ -249,9 +330,7 @@ const Complaints = () => {
         <div className="flex items-center gap-2.5 self-start sm:self-auto">
           <button
             onClick={() => {
-              setCreateFormData({ title: '', description: '', imageUrl: '' });
-              setCreateFormErrors({});
-              setCreateSubmitError('');
+              resetCreateForm();
               setIsCreateModalOpen(true);
             }}
             className="h-10 px-4 bg-[#0F172A] hover:bg-[#1E293B] active:scale-98 text-[#D4AF37] font-semibold text-xs sm:text-sm rounded-lg transition-all flex items-center gap-2 shadow-sm border border-[#D4AF37]/30 cursor-pointer"
@@ -532,14 +611,37 @@ const Complaints = () => {
 
                 {/* Optional Attached Image Thumbnail */}
                 {complaint.imageUrl && (
-                  <div className="mt-3">
+                  <div className="mt-3 flex items-center gap-3">
                     <button
-                      onClick={() => setPreviewImage(complaint.imageUrl)}
-                      className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 border border-border text-xs font-medium text-slate hover:text-charcoal transition-colors cursor-pointer"
+                      type="button"
+                      onClick={() => setPreviewImage(getImageUrl(complaint.imageUrl))}
+                      className="group relative h-16 w-16 sm:h-20 sm:w-20 rounded-lg overflow-hidden border border-border bg-slate-100 shrink-0 cursor-pointer shadow-2xs hover:shadow-xs transition-shadow"
+                      title="Click to view full image"
                     >
-                      <ImageIcon className="w-4 h-4 text-primary" />
-                      <span>View Attached Image</span>
+                      <img
+                        src={getImageUrl(complaint.imageUrl)}
+                        alt="Complaint thumbnail"
+                        className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-200"
+                        onError={(e) => {
+                          e.target.onerror = null;
+                          e.target.src = 'https://via.placeholder.com/150?text=Preview';
+                        }}
+                      />
+                      <div className="absolute inset-0 bg-charcoal/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <ImageIcon className="w-5 h-5 text-white drop-shadow-md" />
+                      </div>
                     </button>
+                    <div className="text-left">
+                      <button
+                        type="button"
+                        onClick={() => setPreviewImage(getImageUrl(complaint.imageUrl))}
+                        className="text-xs font-semibold text-primary hover:underline flex items-center gap-1 cursor-pointer"
+                      >
+                        <ImageIcon className="w-3.5 h-3.5" />
+                        <span>View Photo Attachment</span>
+                      </button>
+                      <p className="text-[11px] text-slate-400 mt-0.5">Click thumbnail to enlarge</p>
+                    </div>
                   </div>
                 )}
 
@@ -695,23 +797,65 @@ const Complaints = () => {
                   )}
                 </div>
 
-                {/* Image URL (Optional) */}
+                {/* Photo Attachment (Optional) */}
                 <div>
                   <label htmlFor="complaint-image" className="block text-sm font-medium text-charcoal mb-1">
-                    Image URL (Optional)
+                    Attach Photo Proof (Optional)
                   </label>
-                  <input
-                    id="complaint-image"
-                    type="url"
-                    placeholder="e.g. https://images.unsplash.com/photo-..."
-                    value={createFormData.imageUrl}
-                    onChange={(e) => setCreateFormData({ ...createFormData, imageUrl: e.target.value })}
-                    disabled={createSubmitLoading}
-                    className="w-full h-11 px-3.5 py-2.5 bg-white border border-border rounded-lg text-charcoal placeholder-slate/40 focus:outline-none focus:ring-2 focus:ring-[#0F172A]/20 focus:border-[#0F172A] transition-colors"
-                  />
-                  <p className="text-[11px] text-slate-500 mt-1">
-                    Paste a direct image link if you have a photo of the defect or issue.
-                  </p>
+
+                  {!filePreviewUrl ? (
+                    <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-slate-200 border-dashed rounded-lg hover:border-primary/50 transition-colors bg-slate-50/50">
+                      <div className="space-y-1 text-center">
+                        <ImageIcon className="mx-auto h-8 w-8 text-slate-400" />
+                        <div className="flex text-sm text-slate-600 justify-center">
+                          <label
+                            htmlFor="complaint-image"
+                            className="relative cursor-pointer rounded-md font-semibold text-primary hover:text-primary-hover focus-within:outline-none"
+                          >
+                            <span>Upload an image</span>
+                            <input
+                              id="complaint-image"
+                              name="image"
+                              type="file"
+                              accept="image/jpeg,image/png,image/webp"
+                              onChange={handleFileChange}
+                              disabled={createSubmitLoading}
+                              className="sr-only"
+                            />
+                          </label>
+                          <p className="pl-1">or drag and drop</p>
+                        </div>
+                        <p className="text-xs text-slate-400">PNG, JPG, WebP up to 5MB</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-2 relative rounded-lg border border-border p-2 bg-slate-50 flex items-center gap-3">
+                      <img
+                        src={filePreviewUrl}
+                        alt="Selected preview"
+                        className="w-16 h-16 object-cover rounded-md border border-slate-200"
+                      />
+                      <div className="flex-1 min-w-0 text-left">
+                        <p className="text-xs font-semibold text-charcoal truncate">{selectedFile?.name}</p>
+                        <p className="text-[11px] text-slate-400">
+                          {selectedFile?.size ? (selectedFile.size / 1024).toFixed(1) : 0} KB
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleClearFile}
+                        disabled={createSubmitLoading}
+                        className="p-1.5 rounded-full text-slate-400 hover:text-error hover:bg-red-50 transition-colors cursor-pointer"
+                        title="Remove photo"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+
+                  {fileError && (
+                    <p className="mt-1 text-xs text-error font-medium">{fileError}</p>
+                  )}
                 </div>
               </div>
 
@@ -719,7 +863,10 @@ const Complaints = () => {
               <div className="px-6 py-4 bg-slate-50 border-t border-border flex justify-end space-x-3">
                 <button
                   type="button"
-                  onClick={() => setIsCreateModalOpen(false)}
+                  onClick={() => {
+                    setIsCreateModalOpen(false);
+                    resetCreateForm();
+                  }}
                   disabled={createSubmitLoading}
                   className="bg-white border border-border text-charcoal hover:bg-slate-100 font-medium px-4 py-2.5 text-sm rounded-lg transition-colors cursor-pointer"
                 >

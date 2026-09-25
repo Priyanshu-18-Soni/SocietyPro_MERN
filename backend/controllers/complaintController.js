@@ -11,13 +11,20 @@ const createComplaint = async (req, res) => {
 
     const residentFlat = req.user.flatNo || req.user.unitNumber || flatNo || 'N/A';
 
+    let resolvedImageUrl = null;
+    if (req.file) {
+      resolvedImageUrl = `/uploads/complaints/${req.file.filename}`;
+    } else if (imageUrl) {
+      resolvedImageUrl = imageUrl;
+    }
+
     const complaint = await Complaint.create({
       societyId: req.user.societyId,
       createdBy: req.user.id,
       flatNo: residentFlat,
       title: title.trim(),
       description: description.trim(),
-      imageUrl: imageUrl || null,
+      imageUrl: resolvedImageUrl,
       affectedFlats: [residentFlat],
       status: 'open',
       verdict: 'pending',

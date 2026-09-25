@@ -573,7 +573,7 @@ open
 
 #### 6.7.4 Business Rules
 
-- **Photo Proof:** Tickets can include an optional image attachment URL (`imageUrl`).
+- **Photo Proof Attachment:** Tickets support native image file uploads (JPEG, PNG, WebP up to 5MB) via multipart/form-data with client previews and server-side disk storage. The resulting URL path (`/uploads/complaints/...`) or legacy external URLs are stored in `imageUrl`. Complaints without an image remain fully valid (`imageUrl: null`).
 - **Idempotent Upvoting:** `PATCH /api/complaints/:id/upvote` checks `upvotedBy` array. If user has already upvoted, the upvote is retracted (decrementing `upvoteCount` and pruning `affectedFlats`). If not upvoted, user ID is appended, incrementing `upvoteCount`.
 - **Verdict Modification Restricted to Author:** Only the user who filed the ticket (`complaint.createdBy === req.user.id`) can submit a verdict. Non-creators receive HTTP 403.
 - **State Automation:** Submitting `{ verdict: 'confirmed' }` automatically transitions status to `'closed'`. Submitting `{ verdict: 'reopened' }` transitions status back to `'open'`.
@@ -720,9 +720,13 @@ Notice {
 | Password hashing | `bcryptjs` with `genSalt(10)` |
 | Token security | `jsonwebtoken` with `JWT_SECRET` env var, 7-day expiry |
 | Payment signature | HMAC-SHA256 over `orderId|paymentId` using `RAZORPAY_KEY_SECRET` |
+| Webhook signature | HMAC-SHA256 over raw body using dedicated `RAZORPAY_WEBHOOK_SECRET` (no fallback to key secret) |
 | No password leakage | All user queries use `.select('-passwordHash')` |
 | CORS | `cors()` middleware (should be locked to frontend origin in production) |
-| Env secrets | `dotenv` — `MONGO_URI`, `JWT_SECRET`, `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET` stored in `.env`, gitignored |
+| Secure HTTP headers | `helmet()` applied globally — XSS protection, clickjacking prevention, MIME-sniffing prevention |
+| Auth rate limiting | `express-rate-limit` — 5 requests per 15 minutes per IP on login and registration endpoints |
+| Input validation | `zod` schema validation middleware — all POST endpoints validate request bodies before controller execution |
+| Env secrets | `dotenv` — `MONGO_URI`, `JWT_SECRET`, `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` stored in `.env`, gitignored |
 
 ### 8.3 Currency & Financial Integrity
 

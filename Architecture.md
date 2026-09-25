@@ -45,7 +45,8 @@
 │   Express.js v5  (Node.js 20+)                                       │
 │   ┌─────────────────────────────────────────────────────────────┐    │
 │   │  Global Middleware Chain                                    │    │
-│   │  cors()  →  express.json()                                  │    │
+│   │  helmet()  →  cors()  →  express.json()                     │    │
+│   │  (per-route)  authRateLimiter → validate(zodSchema)         │    │
 │   │  (per-route)  tenantMiddleware  →  requireRole/Permission   │    │
 │   └─────────────────────────────────────────────────────────────┘    │
 │                                                                      │
@@ -298,19 +299,33 @@ Incoming HTTP Request
         │
         ▼
 ┌─── app.use() global ────────────────────────────────────────────────┐
-│  1. cors()                                                          │
+│  1. helmet()                                                        │
+│     • Sets secure HTTP response headers                             │
+│     • X-Content-Type-Options, X-Frame-Options, CSP defaults         │
+│                                                                     │
+│  2. cors()                                                          │
 │     • Allows all origins in dev (should be restricted in prod)      │
 │     • Sets CORS response headers                                    │
 │                                                                     │
-│  2. express.json()                                                  │
+│  3. express.json()                                                  │
 │     • Parses JSON request bodies                                    │
 │     • Sets req.body                                                 │
+│     • Preserves req.rawBody for webhook HMAC verification           │
 └─────────────────────────────────────────────────────────────────────┘
         │
         ▼
 ┌─── Route-level middleware (per-route) ──────────────────────────────┐
 │                                                                     │
-│  3. tenantMiddleware                                                │
+│  3a. authRateLimiter                    [auth routes only]          │
+│     • 5 requests per 15 minutes per IP                              │
+│     • Applied to POST /login, /register-owner, /register-resident   │
+│     • Returns { success: false, error: 'RATE_LIMIT_EXCEEDED' }      │
+│                                                                     │
+│  3b. validate(zodSchema)                [POST routes with bodies]   │
+│     • Zod schema validation middleware                              │
+│     • Returns 400 { success: false, error: 'VALIDATION_FAILED' }    │
+│                                                                     │
+│  4. tenantMiddleware                                                │
 │     • Reads Authorization: Bearer <token>                           │
 │     • jwt.verify(token, JWT_SECRET) → 401 if invalid/expired       │
 │     • Sets req.user = { id, role, societyId, permissions }          │
@@ -807,6 +822,17 @@ HTTP 200                         HTTP 200
                        4. window.location.href = '/dashboard'
 ```
 
+### 6.9 File Upload Architecture (Multer & Static Asset Pipeline)
+
+- **Storage Location**: Local disk storage under `backend/uploads/complaints/`, initialized recursively at server startup.
+- **Filename Sanitization**: Randomized UUIDv4 filenames (`crypto.randomUUID() + ext`) eliminate path traversal risks and client metadata leakage.
+- **Upload Constraints**:
+  - Strict MIME allow-list: `image/jpeg`, `image/png`, `image/webp`.
+  - 5MB maximum file size limit (`5 * 1024 * 1024` bytes).
+  - Standardized JSON error response shape on rejection matching API contracts.
+- **Static Asset Delivery**: Served via `app.use('/uploads', ...)` with `Cross-Origin-Resource-Policy: cross-origin` to ensure reliable client image previews across ports.
+- **Frontend Contract**: Dispatched via multipart `FormData`, delegating boundary negotiation to the browser.
+
 ---
 
 ## 7. External Service Integration — Razorpay
@@ -993,28 +1019,58 @@ Logout:
     navigate('/login')
 ```
 
-**Note:** Token expiry (7-day JWT) is not proactively handled on the frontend. If an expired token is used, the API returns 401, but the client does not automatically log out or refresh. **Planned:** Axios response interceptor to detect 401 and call `logout()`.
-
-### 8.3 Axios Instance & Token Injection
-
 ```js
 // frontend/src/api/axiosInstance.js
 const axiosInstance = axios.create({
-  baseURL: 'http://localhost:5000/api',
+  baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
   headers: { 'Content-Type': 'application/json' },
 });
 
-// Request interceptor
+// Request interceptor: attaches Bearer token & delegates multipart boundary for FormData
 axiosInstance.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');   // reads directly from storage
+  const token = localStorage.getItem('token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
+    delete config.headers['Content-Type'];
+  }
   return config;
 });
+
+// Response interceptor: handles session expiry (401) and account inactivity (403)
+axiosInstance.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    // 401 Unauthorized: Session expired or invalid token
+    if (error.response?.status === 401) {
+      const url = error.config?.url || '';
+      const isAuthEndpoint =
+        url.includes('/auth/login') ||
+        url.includes('/auth/register-owner') ||
+        url.includes('/auth/register-resident');
+
+      if (!isAuthEndpoint) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        const currentPath = window.location.pathname;
+        if (currentPath !== '/login' && currentPath !== '/register') {
+          window.location.href = '/login?session=expired';
+        }
+      }
+    }
+
+    if (error.response?.status === 403 && error.response?.data?.code === 'ACCOUNT_INACTIVE') {
+      if (window.location.pathname !== '/pending-approval') {
+        window.location.href = '/pending-approval';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
 ```
 
-**Note:** The interceptor reads from `localStorage` directly rather than from `AuthContext`. This is safe because `AuthContext` also writes to `localStorage`, so they stay in sync. However, if two tabs are open and one logs out, the other tab's interceptor will still send the now-invalid token until it gets a 401.
+**Note:** Token expiry (7-day JWT) and session expiration are handled globally: when any non-auth request receives a 401, stale `localStorage` keys (`token`, `user`) are purged, and the user is redirected to `/login?session=expired` where an amber warning alert is rendered. Self-redirect loops and credential failure routes are safely guarded against.
 
 ### 8.4 Layout & Navigation
 
@@ -1120,6 +1176,7 @@ MONGO_URI=mongodb://<user>:<pass>@<shard-hosts>/?ssl=true
 JWT_SECRET=<secret-string>
 RAZORPAY_KEY_ID=rzp_test_...
 RAZORPAY_KEY_SECRET=<secret>
+RAZORPAY_WEBHOOK_SECRET=<webhook-secret>
 ```
 
 | Variable | Purpose | Required |
@@ -1129,6 +1186,7 @@ RAZORPAY_KEY_SECRET=<secret>
 | `JWT_SECRET` | HMAC key for JWT signing/verification | Yes |
 | `RAZORPAY_KEY_ID` | Public Razorpay key (returned to client for checkout widget) | Yes |
 | `RAZORPAY_KEY_SECRET` | Private key for HMAC payment signature verification | Yes |
+| `RAZORPAY_WEBHOOK_SECRET` | Dedicated secret for verifying Razorpay webhook signatures (strict, no fallback) | Yes (for webhooks) |
 
 ### 10.2 MongoDB Atlas Connection
 
@@ -1171,6 +1229,13 @@ Axios `baseURL` is hardcoded to `http://localhost:5000/api`. **Planned:** enviro
 | Grievance lack of community validation & closure | `Complaint.js`, `complaintController.js` | ✅ Resolved | Added idempotent upvoting (`upvotedBy`/`upvoteCount`) and ticket creator two-phase settlement verdict. |
 | Notice board noise & lack of bookmarking | `Notice.js`, `noticeController.js` | ✅ Resolved | Implemented personal pin toggling (`pinnedBy`) and tri-level sorting (Priority -> Pinned -> Recent). |
 | Lack of formal invoice receipts | `Payments.jsx` | ✅ Resolved | Integrated `jsPDF` vector generator with itemized charge breakdown and official PAID watermark. |
+| Missing secure HTTP response headers | `server.js` | ✅ Resolved | Globally mounted `helmet()` before CORS and JSON parsing to enforce secure HTTP headers. |
+| Credential brute-forcing vulnerability | `authRoutes.js` | ✅ Resolved | Added `authRateLimiter` (5 req / 15 min per IP) on login and registration routes. |
+| Ad-hoc manual controller request validation | Controllers across all modules | ✅ Resolved | Standardized with `zod` schemas (`validations/schemas.js`) and `validate` middleware (`middleware/validate.js`). |
+| Insecure webhook secret fallback | `paymentController.js` | ✅ Resolved | Removed fallback to `RAZORPAY_KEY_SECRET`; strictly requires dedicated `RAZORPAY_WEBHOOK_SECRET`. |
+| Dead frontend role paths (`isSuperAdmin`) | `AuthContext.jsx`, `Dashboard.jsx` | ✅ Resolved | Purged non-existent `SuperAdmin` role references and dead UI render trees. |
+| Lack of proactive session-expiry handling | `axiosInstance.js`, `Login.jsx` | ✅ Resolved | Added global 401 interceptor clearing tokens and redirecting to `/login?session=expired` with warning banner. |
+| Unsafe manual photo URLs on complaints | `uploadMiddleware.js`, `complaintController.js`, `Complaints.jsx` | ✅ Resolved | Implemented native Multer attachment pipeline with UUID filenames, 5MB limit, and client previews. |
 
 ### 11.2 Standing Architectural Invariants
 
@@ -1196,5 +1261,5 @@ SocietyPro_MERN/
 │
 └── Infrastructure & Reliability:
     ├── Redis Cache for Notice Board & Rate Configs
-    └── Distributed Rate Limiting (express-rate-limit + Redis Store)
+    └── Distributed Rate Limiting (Redis Store) — local in-memory rate limiting already deployed via express-rate-limit
 ```

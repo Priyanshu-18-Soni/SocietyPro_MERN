@@ -9,9 +9,7 @@ import {
   Bell,
   PlusCircle,
   ArrowRight,
-  Shield,
   DollarSign,
-  Activity,
   FileText,
   AlertCircle,
   Clock,
@@ -50,26 +48,15 @@ const Dashboard = () => {
   const fetchStats = async () => {
     setLoading(true);
 
-    const isSuperAdmin = user?.role === 'SuperAdmin';
     const isOwnerOrCommittee =
       user?.role === 'SocietyOwner' ||
-      user?.role === 'Committee' ||
-      user?.role === 'SocietyAdmin';
+      user?.role === 'Committee';
     const canManageResidents =
       user?.role === 'SocietyOwner' ||
       (user?.role === 'Committee' && user?.permissions?.includes('manageResidents'));
 
     try {
       const promises = [];
-
-      if (isSuperAdmin) {
-        promises.push(
-          axiosInstance
-            .get('/society')
-            .then((res) => ({ type: 'societies', data: res.data }))
-            .catch((err) => ({ type: 'societies', error: err }))
-        );
-      }
 
       // 1. Payments / Bills
       promises.push(
@@ -211,117 +198,7 @@ const Dashboard = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  // Render SuperAdmin view
-  const renderSuperAdminDashboard = () => {
-    return (
-      <div className="space-y-8 animate-in fade-in duration-500">
-        {/* Welcome Section */}
-        <div className="bg-gradient-to-r from-primary to-primary-light rounded-2xl p-6 sm:p-8 text-white shadow-md relative overflow-hidden">
-          <div className="relative z-10 max-w-xl text-left">
-            <h1 className="text-3xl font-bold tracking-tight">Welcome Back, {user?.name || 'SuperAdmin'}!</h1>
-            <p className="text-primary-subtle text-sm sm:text-base mt-2 font-medium">
-              You are logged in as a System Administrator. From here, you can manage housing societies, register new portals, and monitor system performance.
-            </p>
-          </div>
-          <div className="absolute right-0 top-0 bottom-0 w-1/3 opacity-15 pointer-events-none hidden md:block">
-            <Shield className="w-full h-full text-white transform translate-x-12 translate-y-6" />
-          </div>
-        </div>
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Societies Card */}
-          <div className="bg-white rounded-xl shadow-xs border border-border p-6 flex items-center justify-between hover:shadow-md transition-shadow duration-200">
-            <div className="flex items-center space-x-4 text-left">
-              <div className="p-3.5 rounded-lg bg-primary-subtle text-primary">
-                <Building className="w-6 h-6" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-slate">Registered Societies</p>
-                <h3 className="text-2xl font-bold text-charcoal">
-                  {loading ? (
-                    <span className="inline-block w-12 h-6 bg-slate-100 rounded animate-pulse" />
-                  ) : (
-                    stats.totalSocieties
-                  )}
-                </h3>
-              </div>
-            </div>
-            <Link
-              to="/societies"
-              className="p-1.5 rounded-full text-slate hover:bg-slate-100 hover:text-primary transition-all duration-200"
-              title="Manage Societies"
-            >
-              <ArrowRight className="w-5 h-5" />
-            </Link>
-          </div>
-
-          {/* Active Users Card */}
-          <div className="bg-white rounded-xl shadow-xs border border-border p-6 flex items-center space-x-4 hover:shadow-md transition-shadow duration-200 text-left">
-            <div className="p-3.5 rounded-lg bg-blue-50 text-info">
-              <Users className="w-6 h-6" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-slate">Portal Users</p>
-              <h3 className="text-2xl font-bold text-charcoal">Active</h3>
-            </div>
-          </div>
-
-          {/* System Security Status */}
-          <div className="bg-white rounded-xl shadow-xs border border-border p-6 flex items-center space-x-4 hover:shadow-md transition-shadow duration-200 text-left">
-            <div className="p-3.5 rounded-lg bg-emerald-50 text-success">
-              <Shield className="w-6 h-6" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-slate">RBAC Security</p>
-              <h3 className="text-2xl font-bold text-charcoal">Enabled</h3>
-            </div>
-          </div>
-        </div>
-
-        {/* Quick Actions & Recent Activity layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 text-left">
-          {/* Quick Actions */}
-          <div className="bg-white rounded-xl border border-border p-6 shadow-xs lg:col-span-1">
-            <h2 className="text-lg font-bold text-charcoal mb-4 border-b border-border pb-3">Quick Actions</h2>
-            <div className="space-y-3">
-              <Link
-                to="/societies"
-                className="w-full h-11 bg-primary hover:bg-primary-light text-white font-medium px-4 py-2.5 rounded-lg transition-colors flex items-center justify-center space-x-2 shadow-sm text-sm"
-              >
-                <PlusCircle className="w-4 h-4" />
-                <span>Register New Society</span>
-              </Link>
-            </div>
-          </div>
-
-          {/* Activity Feed */}
-          <div className="bg-white rounded-xl border border-border p-6 shadow-xs lg:col-span-2">
-            <h2 className="text-lg font-bold text-charcoal mb-4 border-b border-border pb-3 flex items-center space-x-2">
-              <Activity className="w-5 h-5 text-primary" />
-              <span>System Activity Audit Log</span>
-            </h2>
-            <div className="space-y-4">
-              <div className="flex items-start space-x-3 text-sm border-b border-slate-100 pb-3 last:border-0 last:pb-0">
-                <span className="w-2 h-2 rounded-full bg-primary mt-1.5 shrink-0" />
-                <div>
-                  <p className="text-charcoal font-medium">Logged in successfully as SuperAdmin</p>
-                  <p className="text-xs text-slate mt-0.5">Session active on portal</p>
-                </div>
-              </div>
-              <div className="flex items-start space-x-3 text-sm border-b border-slate-100 pb-3 last:border-0 last:pb-0">
-                <span className="w-2 h-2 rounded-full bg-slate-300 mt-1.5 shrink-0" />
-                <div>
-                  <p className="text-charcoal font-medium">Multi-tenant database connected, {stats.totalSocieties} societies loaded</p>
-                  <p className="text-xs text-slate mt-0.5">Automated synchronization</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
 
   // Render Society Owner / Committee View
   const renderSocietyAdminDashboard = () => {
@@ -728,17 +605,10 @@ const Dashboard = () => {
   };
 
   // Dispatch based on user role
-  if (user?.role === 'SuperAdmin') {
-    return renderSuperAdminDashboard();
-  } else if (
-    user?.role === 'SocietyOwner' ||
-    user?.role === 'Committee' ||
-    user?.role === 'SocietyAdmin'
-  ) {
+  if (user?.role === 'SocietyOwner' || user?.role === 'Committee') {
     return renderSocietyAdminDashboard();
-  } else {
-    return renderResidentDashboard();
   }
+  return renderResidentDashboard();
 };
 
 export default Dashboard;

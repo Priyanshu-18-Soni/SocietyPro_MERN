@@ -25,6 +25,10 @@
   - Password Hashing (`bcryptjs`): `v3.0.3`
   - Razorpay Node SDK: `v2.9.6`
   - CORS: `v2.8.6`, Dotenv: `v17.3.1`
+  - HTTP Security (`helmet`): `^8.3.0`
+  - Rate Limiting (`express-rate-limit`): `^8.7.0`
+  - Input Validation (`zod`): `^4.6.5`
+  - File Uploads (`multer`): `^2.4.0`
 - **Frontend**:
   - React: `v19.2.7`, React-DOM: `v19.2.7`
   - Build Tool: Vite `v8.1.1` (`@vitejs/plugin-react: ^6.0.3`)
@@ -166,6 +170,16 @@ The legacy role naming (`SocietyAdmin`) has been phased out in favor of 3 primar
    - **Centralized Error Handling**: Express 404 JSON catch-all and global JSON error-handling middleware added to `server.js`.
 9. **P2 Database Aggregation Optimization**:
    - Replaced in-memory ledger array loops in `financeController.js` with MongoDB `$facet` aggregation pipeline computing `totalIncome`, `totalExpense`, and `netBalance` on the database engine while streaming the top 50 recent entries.
+10. **Phase 9 Security Hardening & Zero-Drift Remediations**:
+   - **Secure HTTP Headers**: Globally mounted `helmet()` in `server.js` before CORS and body parsing to enforce X-Content-Type-Options, X-Frame-Options, CSP, and HSTS defaults.
+   - **Authentication Rate Limiting**: Added `authRateLimiter` via `express-rate-limit` (5 requests / 15 minutes per IP) scoped to `/api/auth/login`, `/register-owner`, and `/register-resident` with standard `{ success: false, message, error: 'RATE_LIMIT_EXCEEDED' }` error payload; Razorpay webhook explicitly excluded.
+   - **Schema-Based Request Validation**: Added Zod middleware validation (`validate(schema)`) across auth, payments, finance, committee, complaints, and notices routes; standardized 400 responses on input failure.
+   - **Webhook Secret Isolation**: Removed insecure fallback to `RAZORPAY_KEY_SECRET` in `paymentController.js`, strictly enforcing `RAZORPAY_WEBHOOK_SECRET` and failing with 500 `WEBHOOK_SECRET_MISSING` if absent.
+   - **Dead Code Cleanup**: Purged invalid `isSuperAdmin` and `SocietyAdmin` references in `frontend/src/context/AuthContext.jsx` and `frontend/src/pages/Dashboard.jsx`.
+11. **Phase 10 Core UX Enhancements**:
+   - **Global 401 Interceptor**: Response interceptor in `frontend/src/api/axiosInstance.js` purges stale tokens/users from `localStorage` and routes to `/login?session=expired`, guarded against redirect loops and credential submission endpoints. `Login.jsx` renders an amber warning banner.
+   - **Native Photo Attachment Pipeline**: Built using `multer` with disk storage under `backend/uploads/complaints/`, UUIDv4 randomized filenames, 5MB limit, strict MIME allow-list (JPEG, PNG, WebP), standardized JSON error formatting, and static `/uploads` serving with relaxed `Cross-Origin-Resource-Policy: cross-origin`.
+   - **Frontend Visual Upload UI**: `Complaints.jsx` upgraded with drag-and-drop file picker, client-side validation, object URL previews with automatic revocation, multipart `FormData` submission, and clickable card thumbnails with modal expansion.
 
 ---
 
@@ -243,6 +257,28 @@ SUCCESS RATE: 100.0%
    ============================================================
    ```
 
+7. **Phase 9 Security Hardening Verification Suite (`backend/test_phase9_security.js`)**:
+   - 25 automated integration tests verifying Helmet secure headers, Zod validation middleware & error contract, Webhook secret separation (no fallback), and authentication rate limiter:
+   ```
+   ============================================================
+   TOTAL PHASE 9 TESTS: 25
+   PASSED: 25
+   FAILED: 0
+   SUCCESS RATE: 100.0%
+   ============================================================
+   ```
+
+8. **Phase 10 Core UX Enhancements Verification Suite (`backend/test_phase10_ux.js`)**:
+   - 18 automated integration tests verifying image upload, no-image optionality, wrong MIME rejection, >5MB limit rejection, and static CORP headers:
+   ```
+   ============================================================
+   TOTAL PHASE 10 TESTS: 18
+   PASSED: 18
+   FAILED: 0
+   SUCCESS RATE: 100.0%
+   ============================================================
+   ```
+
 ---
 
 ### 3.5 Finalized API Contract Table (Comprehensive)
@@ -255,7 +291,7 @@ SUCCESS RATE: 100.0%
 | `/api/users/residents/:id/reject` | `PATCH` | `tenantMiddleware`, `requirePermission('manageResidents')` | None | `200 { message: 'Resident rejected successfully', resident }` |
 | `/api/payments/generate-bill` | `POST` | `tenantMiddleware`, `manageBills` or Owner | `{ residentId, month, dueDate, amount? }` | `201 { message: 'Bill generated successfully', payment }` |
 | `/api/payments/generate-bulk-bills` | `POST` | `tenantMiddleware`, `manageBills` or Owner | `{ title, month, dueDate }` | `201 { message: 'Generated N bills...', count, bills }` |
-| `/api/complaints` | `POST` | `tenantMiddleware`, `requireActiveUser` | `{ title, description, imageUrl? }` | `201 { message: 'Complaint filed successfully', complaint }` |
+| `/api/complaints` | `POST` | `tenantMiddleware`, `requireActiveUser` | `FormData` (title, description, image?) or JSON | `201 { message: 'Complaint filed successfully', complaint }` |
 | `/api/complaints` | `GET` | `tenantMiddleware`, `requireActiveUser` | Query: `?status=` | `200 { complaints: [...] }` |
 | `/api/complaints/:id/upvote` | `PATCH` | `tenantMiddleware`, `requireActiveUser` | None | `200 { message: '...', isUpvoted, upvoteCount, complaint }` |
 | `/api/complaints/:id/status` | `PATCH` | `tenantMiddleware`, `requirePermission('resolveComplaints')` | `{ status: 'open'\|'in_progress'\|'resolved'\|'closed' }` | `200 { message: 'Complaint status updated successfully', complaint }` |

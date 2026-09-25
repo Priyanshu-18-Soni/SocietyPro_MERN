@@ -6,6 +6,7 @@ require('dotenv').config({ path: path.resolve(__dirname, '.env') });
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const helmet = require('helmet');
 const authRoutes = require('./routes/authRoutes');
 const societyRoutes = require('./routes/societyRoutes');
 const userRoutes = require('./routes/userRoutes');
@@ -17,6 +18,8 @@ const financeRoutes = require('./routes/financeRoutes');
 
 const app = express();
 
+// Security: Secure HTTP headers (XSS, clickjacking, MIME sniffing protection)
+app.use(helmet());
 app.use(cors());
 app.use(
   express.json({
@@ -24,6 +27,16 @@ app.use(
       req.rawBody = buf;
     },
   })
+);
+
+// Serve uploads statically (relax Cross-Origin-Resource-Policy for this route only)
+app.use(
+  '/uploads',
+  (req, res, next) => {
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    next();
+  },
+  express.static(path.join(__dirname, 'uploads'))
 );
 
 // Auth routes

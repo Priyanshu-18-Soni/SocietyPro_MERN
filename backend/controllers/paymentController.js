@@ -301,7 +301,17 @@ const getBills = async (req, res) => {
 // Razorpay Webhook Handler
 const handleRazorpayWebhook = async (req, res) => {
   try {
-    const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || process.env.RAZORPAY_KEY_SECRET;
+    const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
+
+    if (!webhookSecret) {
+      console.error('[CRITICAL] RAZORPAY_WEBHOOK_SECRET is not set. Webhook verification cannot proceed. Set this environment variable before accepting webhook events.');
+      return res.status(500).json({
+        success: false,
+        message: 'Webhook processing is unavailable due to a server configuration error.',
+        error: 'WEBHOOK_SECRET_MISSING',
+      });
+    }
+
     const signature = req.headers['x-razorpay-signature'];
 
     if (!signature) {

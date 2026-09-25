@@ -3,6 +3,9 @@ const router = express.Router();
 const tenantMiddleware = require('../middleware/tenantMiddleware');
 const requireActiveUser = require('../middleware/requireActiveUser');
 const requirePermission = require('../middleware/requirePermission');
+const validate = require('../middleware/validate');
+const { uploadComplaintImage } = require('../middleware/uploadMiddleware');
+const { createComplaintSchema } = require('../validations/schemas');
 const {
   createComplaint,
   getComplaints,
@@ -14,7 +17,7 @@ const {
 // All complaint routes require authentication and an active user status
 router.use(tenantMiddleware, requireActiveUser);
 
-router.post('/', createComplaint);
+router.post('/', uploadComplaintImage, validate(createComplaintSchema), createComplaint);
 router.get('/', getComplaints);
 router.patch('/:id/upvote', upvoteComplaint);
 router.patch('/:id/status', requirePermission('resolveComplaints'), updateComplaintStatus);

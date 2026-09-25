@@ -4,16 +4,18 @@ const tenantMiddleware = require('../middleware/tenantMiddleware');
 const requireActiveUser = require('../middleware/requireActiveUser');
 const requirePermission = require('../middleware/requirePermission');
 const requireRole = require('../middleware/roleMiddleware');
+const validate = require('../middleware/validate');
+const { createOrderSchema, verifyPaymentSchema, generateBillSchema, generateBulkBillsSchema } = require('../validations/schemas');
 const { createOrder, verifyPayment, generateBill, generateBulkBills, getBills, handleRazorpayWebhook } = require('../controllers/paymentController');
 
-// Razorpay asynchronous webhook endpoint (no JWT required)
+// Razorpay asynchronous webhook endpoint (no JWT required, no Zod validation — uses HMAC verification)
 router.post('/webhook', handleRazorpayWebhook);
 
 // Residents can create payment orders for their own bills
-router.post('/create-order', tenantMiddleware, requireActiveUser, requireRole('Resident'), createOrder);
+router.post('/create-order', tenantMiddleware, requireActiveUser, requireRole('Resident'), validate(createOrderSchema), createOrder);
 
 // Residents can verify their own payments
-router.post('/verify', tenantMiddleware, requireActiveUser, requireRole('Resident'), verifyPayment);
+router.post('/verify', tenantMiddleware, requireActiveUser, requireRole('Resident'), validate(verifyPaymentSchema), verifyPayment);
 
 // SocietyOwner or Committee with manageBills permission can generate bills
 router.post('/generate-bill', tenantMiddleware, requireActiveUser, (req, res, next) => {
@@ -29,7 +31,7 @@ router.post('/generate-bill', tenantMiddleware, requireActiveUser, (req, res, ne
   }
   // Otherwise deny access
   return res.status(403).json({ message: 'Access denied. Missing required permission: manageBills' });
-}, generateBill);
+}, validate(generateBillSchema), generateBill);
 
 // SocietyOwner or Committee with manageBills permission can bulk-generate bills for all active residents
 router.post('/generate-bulk-bills', tenantMiddleware, requireActiveUser, (req, res, next) => {
@@ -45,7 +47,7 @@ router.post('/generate-bulk-bills', tenantMiddleware, requireActiveUser, (req, r
   }
   // Otherwise deny access
   return res.status(403).json({ message: 'Access denied. Missing required permission: manageBills' });
-}, generateBulkBills);
+}, validate(generateBulkBillsSchema), generateBulkBills);
 
 // Get bills/payment history with role-based filtering handled in controller
 router.get('/', tenantMiddleware, requireActiveUser, getBills);

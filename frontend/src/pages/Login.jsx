@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import axiosInstance from '../api/axiosInstance';
-import { Building2, Home, ChevronRight } from 'lucide-react';
+import { Building2, Home, ChevronRight, AlertCircle } from 'lucide-react';
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -12,6 +12,8 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const sessionExpired = searchParams.get('session') === 'expired';
 
   const validateForm = () => {
     const newErrors = {};
@@ -78,6 +80,13 @@ const Login = () => {
           <h2 className="text-xl font-bold text-charcoal mb-6 border-b border-border pb-4">
             Sign In
           </h2>
+
+          {sessionExpired && (
+            <div className="mb-4 p-4 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm font-medium flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>Your session has expired. Please sign in again.</span>
+            </div>
+          )}
 
           {apiError && (
             <div className="mb-4 p-4 rounded-lg bg-red-50 border border-error/20 text-error text-sm font-medium">

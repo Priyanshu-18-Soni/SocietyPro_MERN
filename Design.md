@@ -634,9 +634,9 @@ Grievance cards support community validation, multimedia evidence, and verified 
    - `UpvoteButton` displays interactive count with thumbs-up icon.
    - If the current resident has upvoted, the pill displays an emerald active state (`bg-teal-50 border-teal-300 text-teal-800`).
    - Clicking toggles upvote status idempotently with instant local UI count increment/decrement.
-2. **Photo Proof Preview**:
-   - If `imageUrl` is provided, a thumbnail preview is rendered with rounded corners and subtle border.
-   - Clicking opens a high-resolution lightbox preview with zoom controls.
+2. **Photo Proof Attachment & Thumbnail**:
+   - **Upload Component**: Modal features a dashed drag-and-drop file picker with inline client validation (JPEG/PNG/WebP, <= 5MB) and instant object URL preview with removal trigger.
+   - **Card Thumbnail**: Clickable thumbnail (`h-16 w-16 sm:h-20 sm:w-20 rounded-lg overflow-hidden border border-border bg-slate-100`) with hover overlay opening high-resolution lightbox preview with automatic relative path / base URL resolution.
 3. **Two-Phase Creator Verdict Banner**:
    - When a ticket status is marked `resolved`, an amber action banner appears exclusively for the original ticket creator (`createdBy`):
      - **"Confirm Resolution"** (`ApproveButton`, emerald): Permanently closes the ticket (`verdict = 'confirmed'`, `status = 'closed'`).
@@ -738,6 +738,19 @@ export const TableSkeleton = ({ rows = 5, columns = 5 }) => (
     </div>
   </div>
 );
+```
+
+### 5.11 Session Expiry Banner & Warning States (Login.jsx)
+
+When an authenticated API call encounters HTTP 401 Unauthorized outside the credential routes, stale tokens are revoked and the user is redirected to `/login?session=expired`. The page renders an amber warning banner using standard semantic tokens:
+
+```jsx
+{sessionExpired && (
+  <div className="mb-4 p-4 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm font-medium flex items-center gap-2">
+    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+    <span>Your session has expired. Please sign in again.</span>
+  </div>
+)}
 ```
 
 ---

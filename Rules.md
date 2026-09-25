@@ -52,6 +52,10 @@ Dependency bloat, conflicting packages, and unapproved frameworks compromise sys
 | **Security / CORS** | `cors` | `^2.8.6` | Cross-Origin Resource Sharing control with frontend origin whitelisting |
 | **Payment Gateway** | `razorpay` | `^2.9.8` | Razorpay Orders API, Payment verification, refund processing |
 | **Dev Tooling** | `nodemon` | `^3.1.14` | Local hot-reloading development server (devDependency only) |
+| **HTTP Security** | `helmet` | `^8.3.0` | Secure HTTP response headers (XSS, clickjacking, MIME-sniffing protection) |
+| **Rate Limiting** | `express-rate-limit` | `^8.7.0` | IP-based request throttling for brute-force prevention on auth endpoints |
+| **Input Validation** | `zod` | `^4.6.5` | Schema-first request body validation middleware |
+| **File Uploads** | `multer` | `^2.4.0` | Multipart form-data parsing, photo attachments, disk storage |
 
 #### Strictly Disallowed Backend Libraries
 
@@ -598,7 +602,7 @@ Every sprint, feature addition, or schema refactoring MUST update all 6 core doc
 2. `Architecture.md`: System diagrams, middleware matrix, schemas, and API lifecycles.
 3. `Design.md`: UI components, design tokens, modals, and interaction states.
 4. `Memory.md`: Sprint logs, API contracts, edge case defenses, and test results.
-5. `Phases.md` / `Phase.md`: Milestone progress tracking and task completion matrices.
+5. `Phases.md`: Milestone progress tracking and task completion matrices.
 6. `Rules.md`: Non-negotiable architectural rules, dependency governance, and invariants.
 
 No code changes may be submitted with unresolved documentation drift.
@@ -677,6 +681,14 @@ All private routes in `App.jsx` must be wrapped in `ProtectedRoute`:
    Mongoose models enforce strict schema types. Avoid passing raw, unsanitized user objects directly into queries (e.g., `Model.find(req.body)` is strictly prohibited). Always extract and validate individual fields.
 5. **CORS Whitelisting:**  
    Production backend must only allow requests from verified frontend origins configured via `CLIENT_URL`.
+6. **Webhook Secret Separation:**  
+   Webhook verification secrets (`RAZORPAY_WEBHOOK_SECRET`) must NEVER fall back to API key secrets (`RAZORPAY_KEY_SECRET`). Each purpose-specific secret must be explicitly configured as a separate environment variable. If a webhook secret is missing, the handler must fail loudly (HTTP 500 + error log), not silently reuse another secret.
+7. **File Upload Security & Isolation:**  
+   All file uploads must pass through Multer with strict security controls:
+   - **Size Limit**: Maximum 5MB (`5 * 1024 * 1024` bytes); oversized payloads must be rejected immediately with HTTP 400.
+   - **MIME Type Allow-list**: Only `image/jpeg`, `image/png`, and `image/webp` are permitted. All executable or non-image MIME types must be rejected.
+   - **Server-Generated Filenames**: Never trust or reuse client-supplied filenames. Always generate cryptographically random UUIDv4 filenames on disk (`crypto.randomUUID() + ext`).
+   - **Git Exclusion**: The `backend/uploads/` directory must be excluded from version control via `.gitignore`, preserving only `.gitkeep`. Uploaded resident photos must never be committed to git.
 
 ---
 

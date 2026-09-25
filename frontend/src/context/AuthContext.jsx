@@ -39,7 +39,6 @@ export const AuthProvider = ({ children }) => {
         isSocietyOwner: user?.role === 'SocietyOwner',
         isCommittee: user?.role === 'Committee',
         isResident: user?.role === 'Resident',
-        isSuperAdmin: user?.role === 'SuperAdmin',
       }}
     >
       {children}

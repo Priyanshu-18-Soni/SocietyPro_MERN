@@ -29,7 +29,9 @@
 6. [Phase 6: Operational Modules](#phase-6-operational-modules)
 7. [Phase 7: Frontend UI/UX Completion](#phase-7-frontend-uiux-completion)
 8. [Phase 8: Testing, Polish & Deployment Preparation](#phase-8-testing-polish--deployment-preparation)
-9. [Overall Progress Summary](#overall-progress-summary)
+9. [Phase 9: Security Hardening](#phase-9-security-hardening)
+10. [Phase 10: Core UX Enhancements](#phase-10-core-ux-enhancements)
+11. [Overall Progress Summary](#overall-progress-summary)
 
 ---
 
@@ -261,6 +263,46 @@
 
 ---
 
+## Phase 9: Security Hardening
+
+**Objective:** Harden the application against common web attack vectors (brute-force, injection, header-based attacks), enforce strict webhook secret separation, and eliminate dead/misleading code discovered in a post-build gap analysis.  
+**Overall Status:** ✅ COMPLETED
+
+| # | Task | Status | Evidence |
+| :---: | :--- | :---: | :--- |
+| 9.1 | Apply `helmet()` globally in `server.js` for secure HTTP headers (XSS, clickjacking, MIME sniffing) | ✅ | `backend/server.js` — `app.use(helmet())` registered before `cors()` and `express.json()` |
+| 9.2 | Apply strict rate limiter (5 req / 15 min per IP) to `POST /api/auth/login`, `/register-owner`, `/register-resident`; webhook route excluded | ✅ | `backend/routes/authRoutes.js` — `authRateLimiter` middleware; rate-limit response uses standardized `{ success, message, error }` shape |
+| 9.3 | Add Zod validation schemas as middleware for all controllers with manual `if (!field)` checks | ✅ | `backend/validations/schemas.js` — 11 schemas; `backend/middleware/validate.js` — generic middleware factory; wired into `authRoutes`, `paymentRoutes`, `financeRoutes`, `committeeRoutes`, `complaintRoutes`, `noticeRoutes` |
+| 9.4 | Enforce `RAZORPAY_WEBHOOK_SECRET` — remove `RAZORPAY_KEY_SECRET` fallback in webhook handler | ✅ | `backend/controllers/paymentController.js` — Returns HTTP 500 `WEBHOOK_SECRET_MISSING` if env var is unset; `console.error` logs critical warning |
+| 9.5 | Remove dead `isSuperAdmin` code from `AuthContext.jsx` and `Dashboard.jsx` | ✅ | `frontend/src/context/AuthContext.jsx` — `isSuperAdmin` line removed; `Dashboard.jsx` — dead `SuperAdmin` branch, unused icons, and `SocietyAdmin` reference removed |
+
+### 9.6 Security Hardening Test Suite
+
+| Test Suite | File | Tests Run | Result | Evidence |
+| :--- | :--- | :---: | :---: | :--- |
+| Security Hardening Suite | `backend/test_phase9_security.js` | 25 | 25 Passed, 0 Failed | 100% pass across Helmet headers, Zod schemas, Webhook separation, and Rate Limiting |
+
+---
+
+## Phase 10: Core UX Enhancements
+
+**Objective:** Implement seamless session expiry handling on the frontend and replace raw image URL inputs with a native, secure photo attachment pipeline for community grievances.  
+**Overall Status:** ✅ COMPLETED
+
+| # | Task | Status | Evidence |
+| :---: | :--- | :---: | :--- |
+| 10.1 | Global 401 Interceptor & Session Expiry UX | ✅ | `frontend/src/api/axiosInstance.js` — intercepts 401, clears localStorage auth tokens, avoids redirect loops, ignores auth endpoints; `frontend/src/pages/Login.jsx` — renders amber warning alert on `?session=expired` |
+| 10.2 | Multer File Upload Pipeline for Complaints | ✅ | `backend/middleware/uploadMiddleware.js` — disk storage (`backend/uploads/complaints/`), UUIDv4 filenames, JPEG/PNG/WebP allow-list, 5MB limit, standardized JSON error wrapper; `backend/server.js` — static `/uploads` route with CORP header; `.gitignore` exclusions |
+| 10.3 | Visual Attachment Modal & FormData Submission on Frontend | ✅ | `frontend/src/pages/Complaints.jsx` — drag-and-drop file picker, client-side MIME/size validation, `URL.createObjectURL` preview with revocation, multipart `FormData` submission, clickable card thumbnails opening image preview modal |
+
+### 10.4 UX Enhancements Test Suite
+
+| Test Suite | File | Tests Run | Result | Evidence |
+| :--- | :--- | :---: | :---: | :--- |
+| Core UX Suite | `backend/test_phase10_ux.js` | 18 | 18 Passed, 0 Failed | 100% pass across Multer upload, no-image optionality, wrong MIME rejection, >5MB limit rejection, and static CORP headers |
+
+---
+
 ## Overall Progress Summary
 
 ```
@@ -274,11 +316,13 @@ Phase 6B: Notice Board                        ███████████�
 Phase 6C: Society Ledger & Payments           ████████████████████ 100%  ✅ COMPLETED
 Phase 7: Frontend UI/UX Completion            ████████████████████ 100%  ✅ COMPLETED
 Phase 8: Testing & Architectural Parity       ████████████████████ 100%  ✅ CERTIFIED
+Phase 9: Security Hardening                   ████████████████████ 100%  ✅ COMPLETED
+Phase 10: Core UX Enhancements                ████████████████████ 100%  ✅ COMPLETED
 ```
 
 ### 🎯 Architecture Synchronization Certified
 
-All 5 core functional gaps and 6 documentation blueprints have been completely synchronized with 100% parity and zero code/schema drift.
+All core functional gaps and 6 documentation blueprints have been completely synchronized with 100% parity and zero code/schema drift. Phase 10 adds frontend 401 session expiry UX and a native Multer photo attachment pipeline for complaints.
 
 ---
 
@@ -286,8 +330,8 @@ All 5 core functional gaps and 6 documentation blueprints have been completely s
 
 | Metric | Count |
 | :--- | :--- |
-| Total tasks tracked | 97 |
-| Completed (✅) | 97 |
+| Total tasks tracked | 105 |
+| Completed (✅) | 105 |
 | In Progress (🔧) | 0 |
 | Pending (📋) | 0 |
 | Has Bug (🐛) | 0 |

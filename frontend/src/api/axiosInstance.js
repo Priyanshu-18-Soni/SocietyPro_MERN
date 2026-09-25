@@ -14,6 +14,9 @@ axiosInstance.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
+      delete config.headers['Content-Type'];
+    }
     return config;
   },
   (error) => {
@@ -21,10 +24,29 @@ axiosInstance.interceptors.request.use(
   }
 );
 
-// Response interceptor to handle account inactivity / pending status
+// Response interceptor to handle session expiry (401) and account inactivity (403)
 axiosInstance.interceptors.response.use(
   (response) => response,
   (error) => {
+    // 401 Unauthorized: Session expired or invalid token
+    if (error.response?.status === 401) {
+      const url = error.config?.url || '';
+      const isAuthEndpoint =
+        url.includes('/auth/login') ||
+        url.includes('/auth/register-owner') ||
+        url.includes('/auth/register-resident');
+
+      if (!isAuthEndpoint) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+
+        const currentPath = window.location.pathname;
+        if (currentPath !== '/login' && currentPath !== '/register') {
+          window.location.href = '/login?session=expired';
+        }
+      }
+    }
+
     if (
       error.response?.status === 403 &&
       error.response?.data?.code === 'ACCOUNT_INACTIVE'

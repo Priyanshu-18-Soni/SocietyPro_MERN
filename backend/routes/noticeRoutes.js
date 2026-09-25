@@ -3,6 +3,8 @@ const router = express.Router();
 const tenantMiddleware = require('../middleware/tenantMiddleware');
 const requireActiveUser = require('../middleware/requireActiveUser');
 const requirePermission = require('../middleware/requirePermission');
+const validate = require('../middleware/validate');
+const { createNoticeSchema } = require('../validations/schemas');
 const {
   getNotices,
   createNotice,
@@ -14,7 +16,7 @@ const {
 router.use(tenantMiddleware, requireActiveUser);
 
 router.get('/', getNotices);
-router.post('/', requirePermission('manageNotices'), createNotice);
+router.post('/', requirePermission('manageNotices'), validate(createNoticeSchema), createNotice);
 router.patch('/:id/pin', togglePinNotice);
 router.delete('/:id', requirePermission('manageNotices'), deleteNotice);
 
